@@ -21,3 +21,4 @@ graphviz
 networkx
 pyscal3
 spglib
+scipy<1.15
