@@ -21,6 +21,3 @@ dependencies:
   - pip
   - pip:
     - "uvicorn[standard]"
-    - "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop"
-    - "git+https://github.com/pyscal/atomRDF.git@clean_structure"
-    - "git+https://github.com/OCDO/tools4RDF.git@main"
