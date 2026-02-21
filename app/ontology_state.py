@@ -34,7 +34,7 @@ def get_class_list() -> list[dict]:
             if getattr(term, "node_type", None) == "class":
                 classes.append(
                     {
-                        "uri": str(term.URI),
+                        "uri": str(term.uri),
                         "label": term_key,
                         "namespace": ns_key,
                     }
@@ -70,7 +70,7 @@ def get_properties_for_class(class_uri: str) -> list[dict]:
             ptype = getattr(term, "node_type", None)
             if ptype not in ("data_property", "object_property"):
                 continue
-            term_uri = str(term.URI)
+            term_uri = str(term.uri)
             if term_uri in seen_uris:
                 continue
             # Check that there's a path from class_uri to this property
@@ -105,6 +105,6 @@ def _find_term_by_uri(uri: str):
                 term = getattr(ns_obj, term_key)
             except Exception:
                 continue
-            if str(getattr(term, "URI", "")) == uri:
+            if str(getattr(term, "uri", "")) == uri:
                 return term
     return None

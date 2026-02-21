@@ -25,6 +25,11 @@ RUN pip install --no-cache-dir \
     "git+https://github.com/pyscal/atomRDF.git@clean_structure" \
     "git+https://github.com/OCDO/tools4RDF.git@main"
 
+# Patch rdflib_sqlalchemy to use importlib.metadata instead of legacy pkg_resources
+RUN RDFLIB_INIT=$(python -c "import rdflib_sqlalchemy; import os; print(os.path.join(os.path.dirname(rdflib_sqlalchemy.__file__), '__init__.py'))") && \
+    sed -i 's/from pkg_resources import get_distribution/from importlib.metadata import distribution as get_distribution/' "$RDFLIB_INIT" && \
+    sed -i 's/get_distribution("rdflib_sqlalchemy").version/get_distribution("rdflib_sqlalchemy").metadata["Version"]/' "$RDFLIB_INIT"
+
 # App code (cheapest layer — rebuilt on every deploy)
 USER root
 WORKDIR /app
