@@ -1,0 +1,31 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to GCP VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pull and rebuild Docker image on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "── Pulling latest kg_frontend ──"
+            cd ~/kg_frontend
+            git pull origin main
+
+            echo "── Rebuilding and restarting container ──"
+            docker-compose up --build -d
+
+            echo "── Waiting for health check ──"
+            sleep 15
+            curl -sf http://localhost:8000/api/samples > /dev/null && echo "✓ App is healthy" || echo "✗ Health check failed"

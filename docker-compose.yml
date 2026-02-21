@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: kg_frontend_app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # only accessible from localhost (nginx proxies it)
+    volumes:
+      - /data:/data               # persistent GCP disk — survives restarts
+      - ${KG_DATA_DIR:-/home/atomrdf/kg_data}:/kg_data:ro  # YAML source files (read-only)
+    environment:
+      - RELOAD_TOKEN=${RELOAD_TOKEN:-changeme}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/samples"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

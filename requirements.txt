@@ -1,0 +1,23 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Data / RDF
+rdflib==7.1.1
+rdflib-sqlalchemy @ git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop
+sqlalchemy==2.0.36
+pandas==2.2.3
+
+# AtomRDF and tools4RDF (pinned to the branches we're using)
+atomrdf @ git+https://github.com/pyscal/atomRDF.git@clean_structure
+tools4rdf @ git+https://github.com/OCDO/tools4RDF.git@main
+
+# AtomRDF runtime deps
+numpy
+ase
+pyyaml
+graphviz
+networkx
+pyscal3
+spglib

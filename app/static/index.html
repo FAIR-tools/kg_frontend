@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AtomRDF Knowledge Graph</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <h1>AtomRDF Knowledge Graph</h1>
+  <span class="badge">BETA</span>
+  <div class="header-right">
+    <div class="stat-chip">
+      Samples: <strong id="hdr-sample-count">—</strong>
+    </div>
+  </div>
+</header>
+
+<nav id="main-nav">
+  <button class="active" data-tab="samples">Samples</button>
+  <button data-tab="query">Query</button>
+  <button data-tab="export">Export</button>
+</nav>
+
+<main>
+
+  <!-- ───────────── SAMPLES TAB ───────────── -->
+  <div class="tab-panel active" id="tab-samples">
+    <div class="panel-header">
+      <h2>Samples</h2>
+      <p>All computational samples in the knowledge graph. Click a row to inspect details.</p>
+    </div>
+    <div id="samples-alert"></div>
+    <div class="card" id="samples-card">
+      <div id="samples-loading" class="empty"><div class="spinner"></div></div>
+      <div id="samples-table-wrap" style="display:none"></div>
+      <div id="samples-empty" class="empty" style="display:none">
+        <div class="icon">🔬</div>
+        <p>No samples yet. Add YAML files to the <code>kg_data</code> repository.</p>
+      </div>
+    </div>
+    <div class="detail-panel" id="sample-detail">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 id="detail-title">Sample detail</h3>
+        <button class="btn btn-outline btn-sm" onclick="closeDetail()">✕ Close</button>
+      </div>
+      <div class="detail-grid" id="detail-grid"></div>
+    </div>
+  </div>
+
+  <!-- ───────────── QUERY TAB ───────────── -->
+  <div class="tab-panel" id="tab-query">
+    <div class="panel-header">
+      <h2>Query</h2>
+      <p>Use the guided builder to construct queries, or write raw SPARQL.</p>
+    </div>
+
+    <div class="subtabs">
+      <button class="active" data-subtab="guided">Guided (tools4RDF)</button>
+      <button data-subtab="sparql">Raw SPARQL</button>
+    </div>
+
+    <!-- Guided sub-tab -->
+    <div id="subtab-guided">
+      <div class="card">
+        <div class="card-title">Source class</div>
+        <div style="margin-bottom:16px">
+          <label for="src-class">Select starting class</label>
+          <select id="src-class">
+            <option value="">— loading ontology classes… —</option>
+          </select>
+        </div>
+
+        <div class="card-title">Destinations &amp; filters</div>
+        <div id="filter-rows"></div>
+        <button class="btn btn-outline btn-sm" id="add-filter-btn" onclick="addFilterRow()" style="margin-top:4px">
+          + Add destination
+        </button>
+
+        <div style="margin-top:16px">
+          <button class="btn" id="guided-run-btn" onclick="runGuidedQuery()">
+            Run query
+          </button>
+        </div>
+      </div>
+
+      <div id="guided-alert"></div>
+
+      <div id="guided-sparql-wrap" style="display:none">
+        <details>
+          <summary>Generated SPARQL ↓</summary>
+          <pre class="sparql-block" id="guided-sparql-text"></pre>
+        </details>
+      </div>
+
+      <div id="guided-results-wrap" style="display:none">
+        <div class="card">
+          <div class="card-title">Results <span id="guided-result-count" style="font-weight:400;text-transform:none;font-size:12px;color:var(--text-muted)"></span></div>
+          <div class="table-wrap" id="guided-table-wrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Raw SPARQL sub-tab -->
+    <div id="subtab-sparql" style="display:none">
+      <div class="card">
+        <div class="card-title">SPARQL query</div>
+        <label for="sparql-input">Write a SELECT query below</label>
+        <textarea id="sparql-input" class="mono" rows="10" placeholder="SELECT ?sample ?symbol
+WHERE {
+  ?sample a &lt;http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample&gt; .
+  ?sample &lt;http://purls.helmholtz-metadaten.de/cmso/hasMaterial&gt; ?mat .
+  ?mat &lt;http://purls.helmholtz-metadaten.de/cmso/hasStructure&gt; ?st .
+  ?st &lt;http://purls.helmholtz-metadaten.de/cmso/hasSpaceGroupSymbol&gt; ?symbol .
+}"></textarea>
+        <div style="margin-top:12px">
+          <button class="btn" id="sparql-run-btn" onclick="runSparql()">Run query</button>
+        </div>
+      </div>
+      <div id="sparql-alert"></div>
+      <div id="sparql-results-wrap" style="display:none">
+        <div class="card">
+          <div class="card-title">Results <span id="sparql-result-count" style="font-weight:400;text-transform:none;font-size:12px;color:var(--text-muted)"></span></div>
+          <div class="table-wrap" id="sparql-table-wrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────── EXPORT TAB ───────────── -->
+  <div class="tab-panel" id="tab-export">
+    <div class="panel-header">
+      <h2>Export</h2>
+      <p>Download the full knowledge graph in your preferred RDF serialization format.</p>
+    </div>
+    <div class="export-grid">
+      <div class="export-card" onclick="doExport('turtle')">
+        <div class="icon">🐢</div>
+        <div class="fmt">Turtle</div>
+        <div class="desc">Compact, human-readable RDF</div>
+      </div>
+      <div class="export-card" onclick="doExport('json-ld')">
+        <div class="icon">{ }</div>
+        <div class="fmt">JSON-LD</div>
+        <div class="desc">JSON-based linked data</div>
+      </div>
+      <div class="export-card" onclick="doExport('xml')">
+        <div class="icon">📄</div>
+        <div class="fmt">RDF/XML</div>
+        <div class="desc">Standard W3C XML format</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
