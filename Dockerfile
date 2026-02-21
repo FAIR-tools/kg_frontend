@@ -1,36 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM mambaorg/micromamba:1.5.10
+# ─────────────────────────────────────────────────────────────────
+# APP IMAGE — thin layer on top of the pre-built base image.
+# All heavy deps live in ghcr.io/fair-tools/kg_frontend_base.
+# Only app/ code is copied here, so rebuilds take ~5 seconds.
+# ─────────────────────────────────────────────────────────────────
+FROM ghcr.io/fair-tools/kg_frontend_base:latest
 
-# Install system deps as root
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    build-essential \
- && rm -rf /var/lib/apt/lists/*
-
-# Switch back to mamba user for all env operations
-USER $MAMBA_USER
-
-# Install conda packages (heavy layer — cached unless environment.yml changes)
-COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /tmp/environment.yml
-RUN micromamba install -y -n base -f /tmp/environment.yml && \
-    micromamba clean --all --yes
-
-# Activate base env for subsequent RUN commands
-ARG MAMBA_DOCKERFILE_ACTIVATE=1
-
-# Install git-based packages via pip (separate layer for faster rebuilds)
-RUN pip install --no-cache-dir \
-    "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop" \
-    "git+https://github.com/pyscal/atomRDF.git@clean_structure" \
-    "git+https://github.com/OCDO/tools4RDF.git@main"
-
-# Patch rdflib_sqlalchemy to use importlib.metadata instead of legacy pkg_resources
-RUN RDFLIB_INIT=$(python -c "import rdflib_sqlalchemy; import os; print(os.path.join(os.path.dirname(rdflib_sqlalchemy.__file__), '__init__.py'))") && \
-    sed -i 's/from pkg_resources import get_distribution/from importlib.metadata import distribution as get_distribution/' "$RDFLIB_INIT" && \
-    sed -i 's/get_distribution("rdflib_sqlalchemy").version/get_distribution("rdflib_sqlalchemy").metadata["Version"]/' "$RDFLIB_INIT"
-
-# App code (cheapest layer — rebuilt on every deploy)
 USER root
 WORKDIR /app
 COPY app/ ./app/
@@ -38,6 +13,5 @@ RUN mkdir -p /data/structure_store
 
 EXPOSE 8000
 
-# _entrypoint.sh activates the base conda env before running CMD
 ENTRYPOINT ["/usr/local/bin/_entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
