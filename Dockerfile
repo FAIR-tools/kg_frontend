@@ -1,20 +1,20 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
+FROM mambaorg/micromamba:1.5.10
 
-# System deps for graphviz, git and build tools
+# Switch to root for system package installation and app setup
+USER root
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
-    graphviz \
-    libgraphviz-dev \
-    pkg-config \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Install conda environment (conda-forge resolves scipy and other conflicts)
+COPY environment.yml /tmp/environment.yml
+RUN micromamba install -y -n base -f /tmp/environment.yml && \
+    micromamba clean --all --yes
 
-# Install Python deps (cached layer)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
 # Copy application code
 COPY app/ ./app/
@@ -24,4 +24,5 @@ RUN mkdir -p /data/structure_store
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["micromamba", "run", "-n", "base", "uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -1,0 +1,26 @@
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pyscal3>=3.1.12
+  - rdflib
+  - pyyaml
+  - graphviz
+  - python-graphviz
+  - ase
+  - networkx
+  - pandas
+  - mp-api
+  - sqlalchemy
+  - spglib
+  - fastapi
+  - uvicorn
+  - python-multipart
+  - pip
+  - pip:
+    - "uvicorn[standard]"
+    - "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop"
+    - "git+https://github.com/pyscal/atomRDF.git@clean_structure"
+    - "git+https://github.com/OCDO/tools4RDF.git@main"
