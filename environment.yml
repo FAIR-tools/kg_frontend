@@ -17,4 +17,7 @@ dependencies:
   - fastapi
   - uvicorn
   - python-multipart
+  - setuptools
   - pip
+  - pip:
+    - atomman

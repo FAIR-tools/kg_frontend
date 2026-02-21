@@ -25,25 +25,10 @@ RUN micromamba install -y -n base -f /tmp/environment.yml && \
 # Activate base env for subsequent RUN commands
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
 
-# Install git-based packages via pip
+# Install pip-only packages:
+#   rdflib-sqlalchemy from git (no stable PyPI release yet)
+#   atomrdf + tools4rdf from PyPI (latest), --no-deps because all
+#   their dependencies are already satisfied by the conda env above
 RUN pip install --no-cache-dir \
-    "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop" \
-    "git+https://github.com/pyscal/atomRDF.git@clean_structure" \
-    "git+https://github.com/OCDO/tools4RDF.git@main"
-
-# Patch rdflib_sqlalchemy to use importlib.metadata instead of legacy pkg_resources
-RUN python - <<'EOF'
-import rdflib_sqlalchemy, os
-path = os.path.join(os.path.dirname(rdflib_sqlalchemy.__file__), '__init__.py')
-src = open(path).read()
-src = src.replace(
-    'from pkg_resources import get_distribution',
-    'from importlib.metadata import distribution as get_distribution'
-)
-src = src.replace(
-    'get_distribution("rdflib_sqlalchemy").version',
-    'get_distribution("rdflib_sqlalchemy").metadata["Version"]'
-)
-open(path, 'w').write(src)
-print("Patched", path)
-EOF
+    "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop" && \
+    pip install --no-cache-dir --no-deps atomrdf tools4rdf
