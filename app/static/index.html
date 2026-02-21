@@ -22,15 +22,43 @@
 </header>
 
 <nav id="main-nav">
-  <button class="active" data-tab="samples">Samples</button>
+  <button class="active" data-tab="graph">Graph</button>
+  <button data-tab="samples">Samples</button>
   <button data-tab="query">Query</button>
   <button data-tab="export">Export</button>
 </nav>
 
 <main>
 
+  <!-- ───────────── GRAPH TAB ───────────── -->
+  <div class="tab-panel active" id="tab-graph">
+    <div class="panel-header">
+      <h2>Knowledge Graph</h2>
+      <p>Force-directed visualisation of all samples and their relationships. Click a sample node to inspect its details.</p>
+    </div>
+    <div class="graph-legend">
+      <span class="legend-item" data-group="sample">Sample</span>
+      <span class="legend-item" data-group="structure">Structure</span>
+      <span class="legend-item" data-group="element">Element</span>
+      <span class="legend-item" data-group="material">Material</span>
+      <span class="legend-item" data-group="calculation">Calculation</span>
+      <span class="legend-item" data-group="potential">Potential</span>
+      <span class="legend-item" data-group="property">Property</span>
+      <span class="legend-item" data-group="other">Other</span>
+    </div>
+    <div id="graph-alert"></div>
+    <div id="graph-container"></div>
+    <div class="detail-panel" id="graph-sample-detail">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 id="graph-detail-title">Sample detail</h3>
+        <button class="btn btn-outline btn-sm" onclick="closeGraphDetail()">✕ Close</button>
+      </div>
+      <div class="detail-grid" id="graph-detail-grid"></div>
+    </div>
+  </div>
+
   <!-- ───────────── SAMPLES TAB ───────────── -->
-  <div class="tab-panel active" id="tab-samples">
+  <div class="tab-panel" id="tab-samples">
     <div class="panel-header">
       <h2>Samples</h2>
       <p>All computational samples in the knowledge graph. Click a row to inspect details.</p>
@@ -159,6 +187,7 @@ WHERE {
 
 </main>
 
+<script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

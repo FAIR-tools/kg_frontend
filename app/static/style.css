@@ -337,6 +337,52 @@ details summary:hover { color: var(--text); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* ── Graph visualisation ──────────────────────────────── */
+#graph-container {
+  width: 100%;
+  height: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 9px;
+}
+.legend-item::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--legend-color, var(--text-muted));
+}
+.legend-item[data-group="sample"]      { --legend-color: #5c6bc0; }
+.legend-item[data-group="structure"]   { --legend-color: #29b6f6; }
+.legend-item[data-group="element"]     { --legend-color: #4caf50; }
+.legend-item[data-group="material"]    { --legend-color: #ef5350; }
+.legend-item[data-group="calculation"] { --legend-color: #ab47bc; }
+.legend-item[data-group="potential"]   { --legend-color: #ff9800; }
+.legend-item[data-group="property"]    { --legend-color: #ffca28; }
+.legend-item[data-group="other"]       { --legend-color: #546e7a; }
+
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 640px) {
   main { padding: 14px; }

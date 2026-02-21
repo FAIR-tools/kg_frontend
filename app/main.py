@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from app.routes import sparql, guided, ontology, samples, export, admin
+from app.routes import sparql, guided, ontology, samples, export, admin, graph
 
 app = FastAPI(
     title="AtomRDF Knowledge Graph",
@@ -26,6 +26,7 @@ app.include_router(ontology.router)
 app.include_router(samples.router)
 app.include_router(export.router)
 app.include_router(admin.router)
+app.include_router(graph.router)
 
 # Serve the static frontend at /
 # Must be mounted AFTER routes so /api/* is not intercepted

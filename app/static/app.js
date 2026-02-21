@@ -13,6 +13,7 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     btn.classList.add("active");
     document.getElementById(`tab-${tab}`).classList.add("active");
     if (tab === "samples") loadSamples();
+    if (tab === "graph")   loadGraph();
   });
 });
 
@@ -306,6 +307,104 @@ async function runSparql() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// GRAPH
+// ═══════════════════════════════════════════════════════════
+const NODE_COLORS = {
+  sample:      "#5c6bc0",
+  structure:   "#29b6f6",
+  element:     "#4caf50",
+  material:    "#ef5350",
+  calculation: "#ab47bc",
+  potential:   "#ff9800",
+  property:    "#ffca28",
+  other:       "#546e7a",
+};
+
+let _graphInstance = null;
+let _graphLoaded   = false;
+
+async function loadGraph() {
+  if (_graphLoaded) return;
+  _graphLoaded = true;
+
+  const container = document.getElementById("graph-container");
+  if (!container) return;
+
+  // Show spinner
+  container.innerHTML = '<div class="empty" style="height:500px;display:flex;align-items:center;justify-content:center"><div class="spinner" style="width:28px;height:28px;border-width:3px"></div></div>';
+
+  try {
+    const data = await apiFetch("/api/graph");
+
+    if (!data.nodes || !data.nodes.length) {
+      container.innerHTML = '<div class="empty" style="height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="icon">🕸️</div><p>No graph data yet. Push YAML files to the <code>kg_data</code> repository.</p></div>';
+      return;
+    }
+
+    container.innerHTML = "";
+
+    _graphInstance = ForceGraph()(container)
+      .width(container.offsetWidth || 900)
+      .height(520)
+      .backgroundColor("#0f1117")
+      .nodeId("id")
+      .nodeLabel(n => `${n.label}\n(${n.group})`)
+      .nodeColor(n => NODE_COLORS[n.group] || NODE_COLORS.other)
+      .nodeVal(n => n.group === "sample" ? 16 : 4)
+      .nodeCanvasObjectMode(n => n.group === "sample" ? "after" : undefined)
+      .nodeCanvasObject((node, ctx, globalScale) => {
+        // Draw label below sample nodes when zoomed in
+        if (globalScale < 1.4) return;
+        const label = node.label;
+        const fontSize = 10 / globalScale;
+        ctx.font = `500 ${fontSize}px Inter, sans-serif`;
+        ctx.fillStyle = "#e2e4ef";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(label, node.x, node.y + 7);
+      })
+      .linkLabel(l => l.label)
+      .linkColor(() => "rgba(46,50,72,0.8)")
+      .linkDirectionalArrowLength(3)
+      .linkDirectionalArrowRelPos(1)
+      .onNodeClick(node => {
+        if (node.group === "sample") {
+          openGraphSampleDetail(node.id, node.label);
+        }
+      })
+      .onNodeHover(node => {
+        container.style.cursor = (node && node.group === "sample") ? "pointer" : "default";
+      })
+      .graphData(data);
+
+  } catch (e) {
+    container.innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load graph: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function openGraphSampleDetail(sampleId, name) {
+  const panel = document.getElementById("graph-sample-detail");
+  const grid  = document.getElementById("graph-detail-grid");
+  const title = document.getElementById("graph-detail-title");
+
+  title.textContent = name || sampleId;
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px"><div class="spinner"></div></div>';
+  panel.classList.add("open");
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  try {
+    const d = await apiFetch(`/api/samples/${encodeURIComponent(sampleId)}`);
+    grid.innerHTML = renderDetailGrid(d);
+  } catch (e) {
+    grid.innerHTML = `<div class="alert alert-error">Could not load sample: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function closeGraphDetail() {
+  document.getElementById("graph-sample-detail").classList.remove("open");
+}
+
+// ═══════════════════════════════════════════════════════════
 // EXPORT
 // ═══════════════════════════════════════════════════════════
 function doExport(format) {
@@ -561,4 +660,4 @@ function buildTableDOM(columns, rows) {
 }
 
 // ── Init ──────────────────────────────────────────────────
-loadSamples();
+loadGraph();
