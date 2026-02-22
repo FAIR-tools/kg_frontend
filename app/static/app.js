@@ -321,7 +321,9 @@ async function loadGraph() {
     }, { capture: true, passive: true });
 
   } catch (e) {
-    container.innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load graph: ${escHtml(e.message)}</div>`;
+    _graphLoaded = false; // allow retry on next tab click
+    const retryMsg = e.message.startsWith("HTTP 5") ? " The app may still be starting — please try again in a moment." : "";
+    container.innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load graph: ${escHtml(e.message)}.${retryMsg}</div>`;
   }
 }
 
@@ -666,8 +668,10 @@ async function loadWorkflows() {
     wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
     showEl("workflows-table-wrap");
   } catch (e) {
+    _workflowsLoaded = false; // allow retry on next tab click
     hideEl("workflows-loading");
-    showAlert("workflows-alert", "error", `Failed to load workflows: ${e.message}`);
+    const retryMsg = e.message.startsWith("HTTP 5") ? " The app may still be starting — please try again in a moment." : "";
+    showAlert("workflows-alert", "error", `Failed to load workflows: ${e.message}.${retryMsg}`);
   }
 }
 
