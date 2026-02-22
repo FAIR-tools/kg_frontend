@@ -12,6 +12,7 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
+    cmake \
  && rm -rf /var/lib/apt/lists/*
 
 # Switch back to mamba user for all env operations
