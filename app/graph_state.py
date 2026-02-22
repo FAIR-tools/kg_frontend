@@ -24,6 +24,14 @@ def get_kg() -> KnowledgeGraph:
             store_file=_DB_PATH,
             structure_store=_STORE_PATH,
         )
+        # Switch to WAL mode: much more resilient to crashes/concurrent access
+        try:
+            import sqlalchemy
+            engine = _kg.graph.store._engine  # type: ignore[attr-defined]
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text("PRAGMA journal_mode=WAL"))
+        except Exception:
+            pass  # non-fatal; fall back to default journal mode
     return _kg
 
 
