@@ -25,3 +25,4 @@ dependencies:
     - atomman
     - aimsgb
     - crystal-toolkit
+    - groq

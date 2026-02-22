@@ -25,6 +25,7 @@ document.querySelectorAll(".subtabs button").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("subtab-guided").style.display = st === "guided" ? "" : "none";
     document.getElementById("subtab-sparql").style.display = st === "sparql" ? "" : "none";
+    document.getElementById("subtab-ask").style.display    = st === "ask"    ? "" : "none";
   });
 });
 
@@ -643,6 +644,58 @@ function buildTableDOM(columns, rows) {
   });
   table.appendChild(tbody);
   return table;
+}
+
+// ═══════════════════════════════════════════════════════════
+// NATURAL LANGUAGE QUERY (Ask tab)
+// ═══════════════════════════════════════════════════════════
+
+async function runNLQ() {
+  clearAlert("nlq-alert");
+  hideEl("nlq-interpretation-wrap");
+  hideEl("nlq-results-wrap");
+
+  const question = document.getElementById("nlq-input").value.trim();
+  if (!question) {
+    showAlert("nlq-alert", "error", "Please enter a question.");
+    return;
+  }
+
+  showEl("nlq-thinking");
+  setLoading("nlq-run-btn", true);
+
+  try {
+    const res = await apiFetch("/api/nlq", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+
+    // Show interpretation + SPARQL
+    document.getElementById("nlq-interpretation-text").textContent =
+      JSON.stringify(res.interpretation, null, 2);
+    document.getElementById("nlq-sparql-text").textContent = res.sparql || "";
+    showEl("nlq-interpretation-wrap");
+
+    // Show results table
+    if (res.columns && res.columns.length) {
+      const rCount = res.rows.length;
+      document.getElementById("nlq-result-count").textContent =
+        `(${rCount} row${rCount !== 1 ? "s" : ""})`;
+      const tbl = buildTableDOM(res.columns, res.rows);
+      const twrap = document.getElementById("nlq-table-wrap");
+      twrap.innerHTML = "";
+      twrap.appendChild(tbl);
+      showEl("nlq-results-wrap");
+    } else {
+      showAlert("nlq-alert", "info", "Query executed but returned no results.");
+    }
+  } catch (e) {
+    showAlert("nlq-alert", "error", e.message);
+  } finally {
+    hideEl("nlq-thinking");
+    setLoading("nlq-run-btn", false);
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────

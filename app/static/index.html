@@ -97,6 +97,7 @@
     <div class="subtabs">
       <button class="active" data-subtab="guided">Guided (tools4RDF)</button>
       <button data-subtab="sparql">Raw SPARQL</button>
+      <button data-subtab="ask">✨ Ask</button>
     </div>
 
     <!-- Guided sub-tab -->
@@ -164,6 +165,45 @@ WHERE {
         </div>
       </div>
     </div>
+
+  <!-- Ask (NLQ) sub-tab -->
+  <div id="subtab-ask" style="display:none">
+    <div class="card">
+      <div class="card-title">Ask in plain language</div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
+        Describe what you are looking for and an LLM will translate it into a knowledge graph query.
+      </p>
+      <label for="nlq-input">Your question</label>
+      <textarea id="nlq-input" class="mono" rows="3"
+        placeholder="e.g. Find all samples with exactly 4 atoms"></textarea>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+        <button class="btn" id="nlq-run-btn" onclick="runNLQ()">Ask</button>
+        <span id="nlq-thinking" style="display:none;color:var(--text-muted);font-size:13px">
+          ⏳ Thinking…
+        </span>
+      </div>
+    </div>
+    <div id="nlq-alert"></div>
+
+    <div id="nlq-interpretation-wrap" style="display:none">
+      <details style="margin-bottom:8px">
+        <summary>Interpreted query (JSON) ↓</summary>
+        <pre class="sparql-block" id="nlq-interpretation-text"></pre>
+      </details>
+      <details>
+        <summary>Generated SPARQL ↓</summary>
+        <pre class="sparql-block" id="nlq-sparql-text"></pre>
+      </details>
+    </div>
+
+    <div id="nlq-results-wrap" style="display:none">
+      <div class="card">
+        <div class="card-title">Results <span id="nlq-result-count" style="font-weight:400;text-transform:none;font-size:12px;color:var(--text-muted)"></span></div>
+        <div class="table-wrap" id="nlq-table-wrap"></div>
+      </div>
+    </div>
+  </div>
+
   </div>
 
   <!-- ───────────── EXPORT TAB ───────────── -->
@@ -194,6 +234,6 @@ WHERE {
 </main>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260222f"></script>
+<script src="app.js?v=20260222g"></script>
 </body>
 </html>
