@@ -552,51 +552,6 @@ function setLoading(btnId, loading) {
   }
 }
 
-// ── Inline table fix ──────────────────────────────────────
-// Use DOM-based rendering for tables with row click handlers
-// to avoid eval-like onclick strings.
-async function loadSamples() {
-  showEl("samples-loading");
-  hideEl("samples-table-wrap");
-  hideEl("samples-empty");
-  clearAlert("samples-alert");
-
-  try {
-    const data = await apiFetch("/api/samples");
-    _samplesCache = data;
-    document.getElementById("hdr-sample-count").textContent = data.length;
-    hideEl("samples-loading");
-
-    if (!data.length) {
-      showEl("samples-empty");
-      return;
-    }
-
-    const wrap = document.getElementById("samples-table-wrap");
-    const table = document.createElement("table");
-    table.innerHTML = `<thead><tr><th>Name</th><th>URI</th></tr></thead>`;
-    const tbody = document.createElement("tbody");
-    data.forEach((s, i) => {
-      const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-      tr.innerHTML = `<td>${escHtml(s.name || "—")}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${escHtml(s.id)}</td>`;
-      tr.addEventListener("click", () => openSampleDetail(s.id, s.name));
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-
-    wrap.innerHTML = "";
-    const tableWrap = document.createElement("div");
-    tableWrap.className = "table-wrap";
-    tableWrap.appendChild(table);
-    wrap.appendChild(tableWrap);
-    showEl("samples-table-wrap");
-  } catch (e) {
-    hideEl("samples-loading");
-    showAlert("samples-alert", "error", `Failed to load samples: ${e.message}`);
-  }
-}
-
 async function runGuidedQuery() {
   clearAlert("guided-alert");
   hideEl("guided-sparql-wrap");
