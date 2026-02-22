@@ -19,7 +19,7 @@
     }
 
     header {
-      padding: 12px 20px;
+      padding: 10px 18px;
       background: #13151f;
       border-bottom: 1px solid #252938;
       display: flex;
@@ -28,89 +28,58 @@
       flex-shrink: 0;
     }
 
-    #sample-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: #c8d0f0;
-    }
+    #sample-name { font-size: 14px; font-weight: 600; color: #c8d0f0; }
+    #hint        { margin-left: auto; font-size: 11px; color: #5a6080; }
 
-    #hint {
-      margin-left: auto;
-      font-size: 11px;
-      color: #5a6080;
-    }
+    #viewer-wrap { flex: 1; position: relative; overflow: hidden; }
 
-    #viewer-wrap {
-      flex: 1;
-      position: relative;
-    }
-
-    #viewer {
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      inset: 0;
-    }
+    #viewer { width: 100%; height: 100%; position: absolute; inset: 0; }
 
     #status {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      font-size: 14px;
-      color: #8892b0;
-      pointer-events: none;
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; font-size: 14px; color: #8892b0; pointer-events: none; z-index: 20;
     }
-
     #status.hidden { display: none; }
 
     .spinner {
-      width: 28px;
-      height: 28px;
-      border: 3px solid rgba(100, 120, 200, 0.2);
-      border-top-color: #6478c8;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      width: 28px; height: 28px;
+      border: 3px solid rgba(100,120,200,0.2); border-top-color: #6478c8;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
+    .error-msg { color: #ff6688; text-align: center; padding: 0 20px; }
 
-    .error-msg { color: #ff6688; text-align: center; padding: 0 16px; }
-
-    .style-bar {
-      position: absolute;
-      bottom: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 8px;
-      background: rgba(13, 15, 24, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid #252938;
-      border-radius: 8px;
-      padding: 6px 10px;
-      z-index: 10;
+    #toolbar {
+      position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 8px;
+      background: rgba(13,15,24,0.82); backdrop-filter: blur(8px);
+      border: 1px solid #252938; border-radius: 8px; padding: 6px 12px; z-index: 10;
     }
-
-    .style-bar button {
-      background: none;
-      border: 1px solid #353848;
-      color: #9099c0;
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+    #toolbar button {
+      background: none; border: 1px solid #353848; color: #9099c0;
+      font-size: 11px; padding: 4px 10px; border-radius: 5px;
+      cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap;
     }
+    #toolbar button:hover, #toolbar button.active {
+      background: #252938; color: #c8d0f0; border-color: #4a5080;
+    }
+    .sep { width: 1px; height: 18px; background: #252938; margin: 0 2px; }
 
-    .style-bar button:hover,
-    .style-bar button.active {
-      background: #252938;
-      color: #c8d0f0;
-      border-color: #4a5080;
+    #legend {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(13,15,24,0.82); backdrop-filter: blur(8px);
+      border: 1px solid #252938; border-radius: 8px;
+      padding: 8px 12px; font-size: 12px; min-width: 90px; z-index: 10; display: none;
+    }
+    #legend h4 {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: #5a6080; margin-bottom: 6px;
+    }
+    .legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; color: #c8d0f0; }
+    .legend-swatch {
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.15);
     }
   </style>
 </head>
@@ -130,40 +99,125 @@
     <span>Loading structure…</span>
   </div>
 
-  <div class="style-bar" id="style-bar" style="display:none">
+  <div id="toolbar">
     <button id="btn-ball-stick" class="active" onclick="setStyle('ball-stick')">Ball &amp; Stick</button>
-    <button id="btn-sphere"                   onclick="setStyle('sphere')">Space Fill</button>
-    <button id="btn-stick"                    onclick="setStyle('stick')">Stick</button>
+    <button id="btn-sphere"                    onclick="setStyle('sphere')">Space Fill</button>
+    <button id="btn-stick"                     onclick="setStyle('stick')">Stick</button>
+    <div class="sep"></div>
+    <button id="btn-cell" class="active"       onclick="toggleCell()">Unit Cell</button>
   </div>
+
+  <div id="legend"><h4>Species</h4><div id="legend-rows"></div></div>
 </div>
 
 <script>
+  const JMOL = {
+    H:'#ffffff',He:'#d9ffff',Li:'#cc80ff',Be:'#c2ff00',B:'#ffb5b5',
+    C:'#909090',N:'#3050f8',O:'#ff0d0d',F:'#90e050',Ne:'#b3e3f5',
+    Na:'#ab5cf2',Mg:'#8aff00',Al:'#bfa6a6',Si:'#f0c8a0',P:'#ff8000',
+    S:'#ffff30',Cl:'#1ff01f',Ar:'#80d1e3',K:'#8f40d4',Ca:'#3dff00',
+    Sc:'#e6e6e6',Ti:'#bfc2c7',V:'#a6a6ab',Cr:'#8a99c7',Mn:'#9c7ac7',
+    Fe:'#e06633',Co:'#f090a0',Ni:'#50d050',Cu:'#c88033',Zn:'#7d80b0',
+    Ga:'#c28f8f',Ge:'#668f8f',As:'#bd80e3',Se:'#ffa100',Br:'#a62929',
+    Kr:'#5cb8d1',Rb:'#702eb0',Sr:'#00ff00',Y:'#94ffff',Zr:'#94e0e0',
+    Nb:'#73c2c9',Mo:'#54b5b5',Tc:'#3b9e9e',Ru:'#248f8f',Rh:'#0a7d8c',
+    Pd:'#006985',Ag:'#c0c0c0',Cd:'#ffd98f',In:'#a67573',Sn:'#668080',
+    Sb:'#9e63b5',Te:'#d47a00',I:'#940094',Xe:'#429eb0',Cs:'#57178f',
+    Ba:'#00c900',La:'#70d4ff',Hf:'#4dc2ff',Ta:'#4da6ff',W:'#2194d6',
+    Re:'#267dab',Os:'#266696',Ir:'#175487',Pt:'#d0d0e0',Au:'#ffd123',
+    Hg:'#b8b8d0',Pb:'#575961',Bi:'#9e4fb5',Th:'#00baff',U:'#008fff',
+  };
+  function jmolColor(s) { return JMOL[s] || '#aaaaaa'; }
+
+  // Parse extended-XYZ: returns { lattice: [[a1],[a2],[a3]] | null, atoms: [{elem,x,y,z}] }
+  function parseExtXYZ(text) {
+    const lines = text.trim().split('\n');
+    const n = parseInt(lines[0], 10);
+    const comment = lines[1] || '';
+    const atoms = [];
+    for (let i = 0; i < n; i++) {
+      const p = lines[2 + i].trim().split(/\s+/);
+      atoms.push({ elem: p[0], x: +p[1], y: +p[2], z: +p[3] });
+    }
+    let lattice = null;
+    const lm = comment.match(/Lattice\s*=\s*["']?([^"']+)["']?/i);
+    if (lm) {
+      const v = lm[1].trim().split(/\s+/).map(Number);
+      if (v.length >= 9)
+        lattice = [[v[0],v[1],v[2]],[v[3],v[4],v[5]],[v[6],v[7],v[8]]];
+    }
+    return { lattice, atoms };
+  }
+
+  function drawUnitCell(viewer, lat) {
+    const [a1,a2,a3] = lat;
+    const o   = [0,0,0];
+    const p1  = a1;
+    const p2  = a2;
+    const p3  = a3;
+    const p12 = [a1[0]+a2[0], a1[1]+a2[1], a1[2]+a2[2]];
+    const p13 = [a1[0]+a3[0], a1[1]+a3[1], a1[2]+a3[2]];
+    const p23 = [a2[0]+a3[0], a2[1]+a3[1], a2[2]+a3[2]];
+    const p123= [a1[0]+a2[0]+a3[0], a1[1]+a2[1]+a3[1], a1[2]+a2[2]+a3[2]];
+    const edges = [
+      [o,p1],[o,p2],[o,p3],
+      [p1,p12],[p1,p13],
+      [p2,p12],[p2,p23],
+      [p3,p13],[p3,p23],
+      [p12,p123],[p13,p123],[p23,p123],
+    ];
+    const v = p => ({ x: p[0], y: p[1], z: p[2] });
+    edges.forEach(([s,e]) =>
+      viewer.addLine({ start: v(s), end: v(e), color: '#8899cc', linewidth: 1.5 })
+    );
+  }
+
+  // ── state ──────────────────────────────────────────────────────
   const params   = new URLSearchParams(window.location.search);
   const sampleId = params.get('id')   || '';
   const name     = params.get('name') || sampleId;
-
   document.getElementById('sample-name').textContent = name || 'Structure Viewer';
 
-  let _viewer = null;
+  let _viewer  = null;
+  let _lattice = null;
+  let _cellOn  = true;
 
-  function setStyle(mode) {
+  function applyStyle(mode) {
     if (!_viewer) return;
     _viewer.setStyle({}, {});
-    if (mode === 'ball-stick') {
-      _viewer.setStyle({}, { sphere: { colorscheme: 'Jmol', scale: 0.35 }, stick: { colorscheme: 'Jmol', radius: 0.12 } });
-    } else if (mode === 'sphere') {
-      _viewer.setStyle({}, { sphere: { colorscheme: 'Jmol', scale: 0.8 } });
-    } else if (mode === 'stick') {
-      _viewer.setStyle({}, { stick: { colorscheme: 'Jmol', radius: 0.15 } });
-    }
+    if (mode === 'ball-stick')
+      _viewer.setStyle({}, { sphere: { colorscheme:'Jmol', scale:0.28 }, stick: { colorscheme:'Jmol', radius:0.10 } });
+    else if (mode === 'sphere')
+      _viewer.setStyle({}, { sphere: { colorscheme:'Jmol', scale:0.75 } });
+    else if (mode === 'stick')
+      _viewer.setStyle({}, { stick: { colorscheme:'Jmol', radius:0.13 } });
     _viewer.render();
-    document.querySelectorAll('.style-bar button').forEach(b => b.classList.remove('active'));
-    const btn = document.getElementById('btn-' + mode.replace('-', '-').replace('ball-stick','ball-stick'));
-    if (btn) btn.classList.add('active');
-    // map mode → button id
-    const idMap = { 'ball-stick': 'btn-ball-stick', 'sphere': 'btn-sphere', 'stick': 'btn-stick' };
-    const activeBtn = document.getElementById(idMap[mode]);
-    if (activeBtn) activeBtn.classList.add('active');
+    ['btn-ball-stick','btn-sphere','btn-stick'].forEach(id =>
+      document.getElementById(id).classList.remove('active'));
+    const ids = {'ball-stick':'btn-ball-stick','sphere':'btn-sphere','stick':'btn-stick'};
+    document.getElementById(ids[mode]).classList.add('active');
+  }
+
+  function setStyle(mode) { applyStyle(mode); }
+
+  function toggleCell() {
+    if (!_viewer || !_lattice) return;
+    _cellOn = !_cellOn;
+    _viewer.removeAllShapes();
+    if (_cellOn) drawUnitCell(_viewer, _lattice);
+    _viewer.render();
+    document.getElementById('btn-cell').classList.toggle('active', _cellOn);
+  }
+
+  function buildLegend(species) {
+    const el = document.getElementById('legend-rows');
+    [...new Set(species)].sort().forEach(sym => {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      row.innerHTML = `<div class="legend-swatch" style="background:${jmolColor(sym)}"></div><span>${sym}</span>`;
+      el.appendChild(row);
+    });
+    document.getElementById('legend').style.display = '';
   }
 
   function showError(msg) {
@@ -181,23 +235,27 @@
         return r.text();
       })
       .then(xyz => {
+        const { lattice, atoms } = parseExtXYZ(xyz);
+        _lattice = lattice;
+
         document.getElementById('status').classList.add('hidden');
-        document.getElementById('style-bar').style.display = '';
+        document.getElementById('toolbar').style.display = 'flex';
 
-        _viewer = $3Dmol.createViewer('viewer', {
-          backgroundColor: '#0d0f18',
-          antialias: true,
-        });
-
+        _viewer = $3Dmol.createViewer('viewer', { backgroundColor: '#0d0f18', antialias: true });
         _viewer.addModel(xyz, 'xyz');
-        setStyle('ball-stick');
+        applyStyle('ball-stick');
+
+        if (lattice) {
+          drawUnitCell(_viewer, lattice);
+        } else {
+          document.getElementById('btn-cell').style.display = 'none';
+        }
+
         _viewer.zoomTo();
         _viewer.render();
 
-        window.addEventListener('resize', () => {
-          _viewer.resize();
-          _viewer.render();
-        });
+        buildLegend(atoms.map(a => a.elem));
+        window.addEventListener('resize', () => { _viewer.resize(); _viewer.render(); });
       })
       .catch(err => showError(`Failed to load structure: ${err.message}`));
   }

@@ -52,7 +52,7 @@ def get_sample_xyz(sample_id: str):
     try:
         atoms = sample.to_structure(format="ase")
         buf = io.StringIO()
-        ase_write(buf, atoms, format="xyz")
+        ase_write(buf, atoms, format="extxyz")
         return FastResponse(content=buf.getvalue(), media_type="text/plain")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not convert to XYZ: {exc}")
