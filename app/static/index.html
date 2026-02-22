@@ -261,7 +261,7 @@ WHERE {
   <div class="tab-panel" id="tab-upload">
     <div class="panel-header">
       <h2>Upload data</h2>
-      <p>Submit YAML workflow files for admin review. Accepted files are ingested into the knowledge graph after approval.</p>
+      <p>Submit YAML workflow files to add them to the knowledge graph. Files are ingested immediately.</p>
     </div>
 
     <!-- Collaborator submit form -->
@@ -275,20 +275,8 @@ WHERE {
         <input id="upload-file-input" type="file" accept=".yaml,.yml"
                style="margin-top:4px" />
       </label>
-      <button class="btn-primary" style="margin-top:14px" onclick="submitUpload()">Submit for review</button>
+      <button class="btn-primary" style="margin-top:14px" onclick="submitUpload()">Upload</button>
       <div id="upload-status" style="margin-top:10px"></div>
-    </section>
-
-    <!-- Admin panel (unlocked by admin token) -->
-    <section class="card" style="max-width:700px">
-      <h3 style="margin-top:0">Admin — pending approvals</h3>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
-        <input id="admin-token-input" type="password" placeholder="Admin token"
-               style="flex:1" />
-        <button class="btn-secondary" onclick="loadPending()">Load queue</button>
-      </div>
-      <div id="pending-list"><p class="muted">Enter the admin token above to view pending submissions.</p></div>
-      <div id="rebuild-status-bar" style="margin-top:10px"></div>
     </section>
   </div>
 
@@ -309,6 +297,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260222p"></script>
+<script src="app.js?v=20260222q"></script>
 </body>
 </html>

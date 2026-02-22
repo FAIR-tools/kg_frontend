@@ -1,15 +1,9 @@
 """
-/api/upload  — collaborator file submission and admin approval queue.
+/api/upload  — trusted collaborator file ingestion.
 
-Flow:
-  1. Collaborator POSTs a YAML file with their UPLOAD_TOKEN.
-     → saved to PENDING_DIR (/data/pending/)
-  2. Admin lists pending files via GET /api/admin/pending (RELOAD_TOKEN).
-  3. Admin approves via POST /api/admin/approve/{filename}.
-     → file moved to APPROVED_DIR (/data/approved/)
-     → rebuild runs in a background thread, then the KG singleton is reloaded.
-  4. Admin rejects via DELETE /api/admin/reject/{filename}.
-     → pending file is deleted.
+Anyone with the UPLOAD_TOKEN can POST a YAML file.
+It is saved immediately to the uploads directory and a background
+rebuild is triggered automatically.
 """
 
 import os
@@ -25,56 +19,38 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
-# ── Tokens ────────────────────────────────────────────────────────────────────
-_UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "")
-_RELOAD_TOKEN = os.environ.get("RELOAD_TOKEN", "changeme")
+_UPLOAD_TOKEN  = os.environ.get("UPLOAD_TOKEN", "")
 
-# ── Directories (all on the persistent /data disk) ───────────────────────────
-_DATA_ROOT    = "/data" if os.path.isdir("/data") else os.path.join(os.getcwd(), "data")
-PENDING_DIR   = os.path.join(_DATA_ROOT, "pending")
-APPROVED_DIR  = os.path.join(_DATA_ROOT, "approved")
-_STORE_PATH   = os.path.join(_DATA_ROOT, "structure_store")
-_DB_PATH      = os.path.join(_DATA_ROOT, "graph.db")
-
-# git-sourced YAMLs still scanned during rebuild (backward compat)
+_DATA_ROOT   = "/data" if os.path.isdir("/data") else os.path.join(os.getcwd(), "data")
+UPLOAD_DIR   = os.path.join(_DATA_ROOT, "uploads")
+_STORE_PATH  = os.path.join(_DATA_ROOT, "structure_store")
+_DB_PATH     = os.path.join(_DATA_ROOT, "graph.db")
 _GIT_YAML_DIR = "/kg_data/data"
 
-os.makedirs(PENDING_DIR,  exist_ok=True)
-os.makedirs(APPROVED_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-# ── Auth helpers ─────────────────────────────────────────────────────────────
-def _require_upload(token: str):
-    if not _UPLOAD_TOKEN:
-        raise HTTPException(status_code=503, detail="Upload not configured (UPLOAD_TOKEN unset)")
-    if token != _UPLOAD_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid upload token")
+# ── Background rebuild ──────────────────────────────────────────────────────
+rebuild_state: dict = {"status": "idle", "started_at": None}
 
 
-def _require_admin(token: str):
-    if token != _RELOAD_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
-
-
-# ── Rebuild helper (mirrors rebuild_graph.py logic) ──────────────────────────
 def _run_rebuild():
-    """Wipe and rebuild the KG from approved + git-sourced YAMLs."""
+    global rebuild_state
+    rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
     try:
         from atomrdf import KnowledgeGraph
         from atomrdf.io.workflow_parser import WorkflowParser
         from app.graph_state import reload_kg
-        from app.routes.graph import _graph_cache, _graph_cache_mtime
+        import app.routes.graph as graph_mod
 
-        # Collect all YAML files: approved uploads + git data
         yaml_files = sorted(
-            glob.glob(os.path.join(APPROVED_DIR, "**", "*.yaml"), recursive=True) +
-            glob.glob(os.path.join(APPROVED_DIR, "**", "*.yml"),  recursive=True) +
+            glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yaml"), recursive=True) +
+            glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yml"),  recursive=True) +
             glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True) +
             glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"),  recursive=True)
         )
-        log.info("[rebuild] %d YAML file(s) found", len(yaml_files))
+        log.info("[rebuild] %d YAML file(s)", len(yaml_files))
 
-        # Wipe existing graph
         if os.path.exists(_DB_PATH):
             os.remove(_DB_PATH)
         if os.path.isdir(_STORE_PATH):
@@ -83,133 +59,63 @@ def _run_rebuild():
 
         kg = KnowledgeGraph(store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH)
         parser = WorkflowParser(kg=kg)
-
+        errors = []
         for yf in yaml_files:
-            log.info("[rebuild] parsing %s", yf)
             try:
                 parser.parse(yf)
             except Exception as exc:
                 log.error("[rebuild] failed %s: %s", yf, exc)
+                errors.append(yf)
 
-        log.info("[rebuild] done — %d sample(s)", len(kg.sample_ids))
-
-        # Invalidate graph.py's in-memory cache then reload singleton
-        import app.routes.graph as graph_mod
         graph_mod._graph_cache = None
         graph_mod._graph_cache_mtime = -1.0
-
         reload_kg()
-        log.info("[rebuild] KG singleton reloaded")
+
+        n = len(kg.sample_ids)
+        log.info("[rebuild] done — %d sample(s), %d error(s)", n, len(errors))
+        rebuild_state = {"status": "done", "samples": n, "errors": errors,
+                         "started_at": rebuild_state["started_at"]}
     except Exception as e:
         log.error("[rebuild] unexpected error: %s", e)
+        rebuild_state["status"] = f"error: {e}"
 
 
-# ── Rebuild state (simple in-memory flag) ────────────────────────────────────
-_rebuild_state: dict = {"status": "idle", "started_at": None}
-
-
-def _rebuild_in_background():
-    global _rebuild_state
-    _rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
-    try:
-        _run_rebuild()
-        _rebuild_state["status"] = "done"
-    except Exception as e:
-        _rebuild_state["status"] = f"error: {e}"
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# Collaborator endpoints
-# ════════════════════════════════════════════════════════════════════════════
-
+# ── Upload endpoint ────────────────────────────────────────────────────────────
 @router.post("/upload")
 async def submit_file(
     file: UploadFile = File(...),
     x_upload_token: str = Header(...),
 ):
-    """
-    Submit a YAML file for admin review.
-    Requires X-Upload-Token header.
-    """
-    _require_upload(x_upload_token)
+    """Upload a YAML file. Requires X-Upload-Token header. Triggers a KG rebuild immediately."""
+    if not _UPLOAD_TOKEN:
+        raise HTTPException(status_code=503, detail="Upload not configured (UPLOAD_TOKEN unset)")
+    if x_upload_token != _UPLOAD_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid upload token")
 
-    name = Path(file.filename).name  # strip any path components
+    name = Path(file.filename).name
     if not name.endswith((".yaml", ".yml")):
         raise HTTPException(status_code=400, detail="Only .yaml / .yml files are accepted")
 
-    # Prefix with timestamp to avoid collisions
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    safe_name = f"{ts}_{name}"
-    dest = os.path.join(PENDING_DIR, safe_name)
-
     content = await file.read()
-    if len(content) > 100 * 1024 * 1024:  # 100 MB hard cap
+    if len(content) > 100 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
 
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    safe_name = f"{ts}_{name}"
+    dest = os.path.join(UPLOAD_DIR, safe_name)
     with open(dest, "wb") as fh:
         fh.write(content)
+    log.info("[upload] saved %s (%d bytes)", safe_name, len(content))
 
-    log.info("[upload] received %s (%d bytes) → %s", name, len(content), dest)
-    return {"status": "pending", "filename": safe_name, "bytes": len(content)}
+    if rebuild_state.get("status") != "running":
+        threading.Thread(target=_run_rebuild, daemon=True).start()
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# Admin endpoints  (all require X-Reload-Token)
-# ════════════════════════════════════════════════════════════════════════════
-
-@router.get("/admin/pending")
-def list_pending(x_reload_token: str = Header(...)):
-    """List all files waiting for approval."""
-    _require_admin(x_reload_token)
-    files = []
-    for p in sorted(Path(PENDING_DIR).iterdir()):
-        if p.is_file() and p.suffix in (".yaml", ".yml"):
-            stat = p.stat()
-            files.append({
-                "filename": p.name,
-                "bytes": stat.st_size,
-                "submitted_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-            })
-    return {"pending": files}
+    return {"status": "rebuilding", "filename": safe_name, "bytes": len(content)}
 
 
-@router.post("/admin/approve/{filename}")
-def approve(filename: str, x_reload_token: str = Header(...)):
-    """Approve a pending file and trigger a KG rebuild."""
-    _require_admin(x_reload_token)
-
-    src = Path(PENDING_DIR) / filename
-    if not src.is_file():
-        raise HTTPException(status_code=404, detail="Pending file not found")
-
-    dst = Path(APPROVED_DIR) / filename
-    shutil.move(str(src), str(dst))
-    log.info("[admin] approved %s → %s", src, dst)
-
-    if _rebuild_state.get("status") == "running":
-        return {"status": "approved", "rebuild": "already running — will pick up on next rebuild"}
-
-    t = threading.Thread(target=_rebuild_in_background, daemon=True)
-    t.start()
-    return {"status": "approved", "filename": filename, "rebuild": "started"}
-
-
-@router.delete("/admin/reject/{filename}")
-def reject(filename: str, x_reload_token: str = Header(...)):
-    """Reject and delete a pending file."""
-    _require_admin(x_reload_token)
-
-    p = Path(PENDING_DIR) / filename
-    if not p.is_file():
-        raise HTTPException(status_code=404, detail="Pending file not found")
-
-    p.unlink()
-    log.info("[admin] rejected and deleted %s", filename)
-    return {"status": "rejected", "filename": filename}
-
-
-@router.get("/admin/rebuild-status")
-def rebuild_status(x_reload_token: str = Header(...)):
-    """Check the status of the most recent background rebuild."""
-    _require_admin(x_reload_token)
-    return _rebuild_state
+@router.get("/upload/status")
+def upload_status(x_upload_token: str = Header(...)):
+    """Check the status of the most recent rebuild."""
+    if not _UPLOAD_TOKEN or x_upload_token != _UPLOAD_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid token")
+    return rebuild_state

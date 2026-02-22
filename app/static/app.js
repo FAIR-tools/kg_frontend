@@ -357,7 +357,7 @@ function doExport(format) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// UPLOAD  (collaborator submit + admin approval)
+// UPLOAD
 // ═══════════════════════════════════════════════════════════
 async function submitUpload() {
   const token = document.getElementById("upload-token-input").value.trim();
@@ -386,104 +386,32 @@ async function submitUpload() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-    status.innerHTML = alertHtml("success", `✓ Submitted <strong>${escHtml(data.filename)}</strong> (${(data.bytes/1024).toFixed(1)} KB). Awaiting admin approval.`);
+
+    status.innerHTML = alertHtml("success", `✓ <strong>${escHtml(data.filename)}</strong> uploaded (${(data.bytes/1024).toFixed(1)} KB). Rebuilding knowledge graph…`);
     fileInput.value = "";
+
+    // Poll rebuild status
+    let polls = 0;
+    const poll = setInterval(async () => {
+      try {
+        const st = await fetch(`${API}/api/upload/status`, { headers: { "X-Upload-Token": token } }).then(r => r.json());
+        if (st.status === "done") {
+          clearInterval(poll);
+          const errs = st.errors?.length ? ` (${st.errors.length} file(s) had parse errors)` : "";
+          status.innerHTML = alertHtml("success", `✓ Done — ${st.samples} sample(s) in graph${errs}.`);
+          _loadSampleCount();
+        } else if (st.status?.startsWith("error")) {
+          clearInterval(poll);
+          status.innerHTML = alertHtml("error", `Rebuild error: ${escHtml(st.status)}`);
+        } else if (++polls > 60) {
+          clearInterval(poll);
+          status.innerHTML = alertHtml("warn", "Rebuild is taking a while — check back in a moment.");
+        }
+      } catch(_) {}
+    }, 5000);
+
   } catch (e) {
     status.innerHTML = alertHtml("error", escHtml(e.message));
-  }
-}
-
-async function loadPending() {
-  const token = document.getElementById("admin-token-input").value.trim();
-  const list  = document.getElementById("pending-list");
-  const bar   = document.getElementById("rebuild-status-bar");
-  if (!token) { list.innerHTML = alertHtml("error", "Enter the admin token."); return; }
-
-  list.innerHTML = '<div class="spinner" style="display:inline-block;width:16px;height:16px;border-width:2px;vertical-align:middle"></div> Loading…';
-
-  try {
-    const [pending, rbStatus] = await Promise.all([
-      fetch(`${API}/api/admin/pending`, { headers: { "X-Reload-Token": token } }).then(r => r.json()),
-      fetch(`${API}/api/admin/rebuild-status`, { headers: { "X-Reload-Token": token } }).then(r => r.json()),
-    ]);
-
-    if (pending.detail) throw new Error(pending.detail);
-
-    // Rebuild status banner
-    if (rbStatus.status === "running") {
-      bar.innerHTML = alertHtml("warn", `⏳ Rebuild running since ${rbStatus.started_at}`);
-    } else if (rbStatus.status === "done") {
-      bar.innerHTML = alertHtml("success", `✓ Last rebuild completed successfully.`);
-    } else if (rbStatus.status && rbStatus.status.startsWith("error")) {
-      bar.innerHTML = alertHtml("error", `Rebuild error: ${escHtml(rbStatus.status)}`);
-    } else {
-      bar.innerHTML = "";
-    }
-
-    if (!pending.pending.length) {
-      list.innerHTML = '<p class="muted">No files pending approval.</p>';
-      return;
-    }
-
-    const rows = pending.pending.map(f => `
-      <tr>
-        <td style="word-break:break-all">${escHtml(f.filename)}</td>
-        <td>${(f.bytes/1024).toFixed(1)} KB</td>
-        <td>${new Date(f.submitted_at).toLocaleString()}</td>
-        <td style="white-space:nowrap">
-          <button class="btn-primary" style="padding:4px 10px;font-size:0.8rem"
-                  onclick="approveFile(${JSON.stringify(f.filename)})">Approve</button>
-          <button class="btn-secondary" style="padding:4px 10px;font-size:0.8rem;margin-left:4px;color:var(--danger,#e05555)"
-                  onclick="rejectFile(${JSON.stringify(f.filename)})">Reject</button>
-        </td>
-      </tr>`).join("");
-
-    list.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.87rem">
-        <thead><tr>
-          <th style="text-align:left;padding:4px 8px">File</th>
-          <th style="text-align:left;padding:4px 8px">Size</th>
-          <th style="text-align:left;padding:4px 8px">Submitted</th>
-          <th style="padding:4px 8px"></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  } catch(e) {
-    list.innerHTML = alertHtml("error", escHtml(e.message));
-  }
-}
-
-async function approveFile(filename) {
-  const token = document.getElementById("admin-token-input").value.trim();
-  const list  = document.getElementById("pending-list");
-  try {
-    const res = await fetch(`${API}/api/admin/approve/${encodeURIComponent(filename)}`, {
-      method: "POST",
-      headers: { "X-Reload-Token": token },
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-    await loadPending();   // refresh queue
-    document.getElementById("rebuild-status-bar").innerHTML =
-      alertHtml("success", `✓ ${escHtml(filename)} approved. Rebuild started — check status in a moment.`);
-  } catch(e) {
-    list.innerHTML = alertHtml("error", escHtml(e.message));
-  }
-}
-
-async function rejectFile(filename) {
-  if (!confirm(`Reject and delete "${filename}"?`)) return;
-  const token = document.getElementById("admin-token-input").value.trim();
-  try {
-    const res = await fetch(`${API}/api/admin/reject/${encodeURIComponent(filename)}`, {
-      method: "DELETE",
-      headers: { "X-Reload-Token": token },
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-    await loadPending();
-  } catch(e) {
-    document.getElementById("pending-list").innerHTML = alertHtml("error", escHtml(e.message));
   }
 }
 
