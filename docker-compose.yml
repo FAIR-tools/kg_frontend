@@ -10,6 +10,7 @@ services:
       - ${KG_DATA_DIR:-/home/atomrdf/kg_data}:/kg_data:ro  # YAML source files (read-only)
     environment:
       - RELOAD_TOKEN=${RELOAD_TOKEN:-changeme}
+      - UPLOAD_TOKEN=${UPLOAD_TOKEN:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-groq}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-llama-3.1-8b-instant}

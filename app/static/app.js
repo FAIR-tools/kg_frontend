@@ -357,6 +357,142 @@ function doExport(format) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// UPLOAD  (collaborator submit + admin approval)
+// ═══════════════════════════════════════════════════════════
+async function submitUpload() {
+  const token = document.getElementById("upload-token-input").value.trim();
+  const fileInput = document.getElementById("upload-file-input");
+  const status = document.getElementById("upload-status");
+
+  if (!token) { status.innerHTML = alertHtml("error", "Enter your upload token."); return; }
+  if (!fileInput.files.length) { status.innerHTML = alertHtml("error", "Choose a YAML file first."); return; }
+
+  const file = fileInput.files[0];
+  if (!file.name.match(/\.ya?ml$/i)) {
+    status.innerHTML = alertHtml("error", "Only .yaml / .yml files are accepted.");
+    return;
+  }
+
+  status.innerHTML = '<div class="spinner" style="display:inline-block;width:16px;height:16px;border-width:2px;vertical-align:middle"></div> Uploading…';
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  try {
+    const res = await fetch(`${API}/api/upload`, {
+      method: "POST",
+      headers: { "X-Upload-Token": token },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    status.innerHTML = alertHtml("success", `✓ Submitted <strong>${escHtml(data.filename)}</strong> (${(data.bytes/1024).toFixed(1)} KB). Awaiting admin approval.`);
+    fileInput.value = "";
+  } catch (e) {
+    status.innerHTML = alertHtml("error", escHtml(e.message));
+  }
+}
+
+async function loadPending() {
+  const token = document.getElementById("admin-token-input").value.trim();
+  const list  = document.getElementById("pending-list");
+  const bar   = document.getElementById("rebuild-status-bar");
+  if (!token) { list.innerHTML = alertHtml("error", "Enter the admin token."); return; }
+
+  list.innerHTML = '<div class="spinner" style="display:inline-block;width:16px;height:16px;border-width:2px;vertical-align:middle"></div> Loading…';
+
+  try {
+    const [pending, rbStatus] = await Promise.all([
+      fetch(`${API}/api/admin/pending`, { headers: { "X-Reload-Token": token } }).then(r => r.json()),
+      fetch(`${API}/api/admin/rebuild-status`, { headers: { "X-Reload-Token": token } }).then(r => r.json()),
+    ]);
+
+    if (pending.detail) throw new Error(pending.detail);
+
+    // Rebuild status banner
+    if (rbStatus.status === "running") {
+      bar.innerHTML = alertHtml("warn", `⏳ Rebuild running since ${rbStatus.started_at}`);
+    } else if (rbStatus.status === "done") {
+      bar.innerHTML = alertHtml("success", `✓ Last rebuild completed successfully.`);
+    } else if (rbStatus.status && rbStatus.status.startsWith("error")) {
+      bar.innerHTML = alertHtml("error", `Rebuild error: ${escHtml(rbStatus.status)}`);
+    } else {
+      bar.innerHTML = "";
+    }
+
+    if (!pending.pending.length) {
+      list.innerHTML = '<p class="muted">No files pending approval.</p>';
+      return;
+    }
+
+    const rows = pending.pending.map(f => `
+      <tr>
+        <td style="word-break:break-all">${escHtml(f.filename)}</td>
+        <td>${(f.bytes/1024).toFixed(1)} KB</td>
+        <td>${new Date(f.submitted_at).toLocaleString()}</td>
+        <td style="white-space:nowrap">
+          <button class="btn-primary" style="padding:4px 10px;font-size:0.8rem"
+                  onclick="approveFile(${JSON.stringify(f.filename)})">Approve</button>
+          <button class="btn-secondary" style="padding:4px 10px;font-size:0.8rem;margin-left:4px;color:var(--danger,#e05555)"
+                  onclick="rejectFile(${JSON.stringify(f.filename)})">Reject</button>
+        </td>
+      </tr>`).join("");
+
+    list.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:0.87rem">
+        <thead><tr>
+          <th style="text-align:left;padding:4px 8px">File</th>
+          <th style="text-align:left;padding:4px 8px">Size</th>
+          <th style="text-align:left;padding:4px 8px">Submitted</th>
+          <th style="padding:4px 8px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch(e) {
+    list.innerHTML = alertHtml("error", escHtml(e.message));
+  }
+}
+
+async function approveFile(filename) {
+  const token = document.getElementById("admin-token-input").value.trim();
+  const list  = document.getElementById("pending-list");
+  try {
+    const res = await fetch(`${API}/api/admin/approve/${encodeURIComponent(filename)}`, {
+      method: "POST",
+      headers: { "X-Reload-Token": token },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    await loadPending();   // refresh queue
+    document.getElementById("rebuild-status-bar").innerHTML =
+      alertHtml("success", `✓ ${escHtml(filename)} approved. Rebuild started — check status in a moment.`);
+  } catch(e) {
+    list.innerHTML = alertHtml("error", escHtml(e.message));
+  }
+}
+
+async function rejectFile(filename) {
+  if (!confirm(`Reject and delete "${filename}"?`)) return;
+  const token = document.getElementById("admin-token-input").value.trim();
+  try {
+    const res = await fetch(`${API}/api/admin/reject/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+      headers: { "X-Reload-Token": token },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    await loadPending();
+  } catch(e) {
+    document.getElementById("pending-list").innerHTML = alertHtml("error", escHtml(e.message));
+  }
+}
+
+function alertHtml(type, msg) {
+  const colors = { success: "var(--accent,#4caf50)", error: "var(--danger,#e05555)", warn: "#e0a020" };
+  return `<div style="padding:8px 12px;border-left:3px solid ${colors[type]||colors.warn};background:var(--surface2);border-radius:4px;font-size:0.88rem">${msg}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════
 async function apiFetch(path, opts = {}) {

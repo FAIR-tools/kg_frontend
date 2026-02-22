@@ -45,10 +45,11 @@ jobs:
             docker pull ghcr.io/fair-tools/kg_frontend_base:latest
 
             echo "── Rebuilding app layer and restarting ──"
+            docker compose down --remove-orphans
             docker compose up --build -d
 
             echo "── Waiting for health check ──"
             sleep 15
             echo "── Container logs ──"
-            docker logs kg_frontend_app --tail 60
+            docker compose logs app --tail 60
             curl -sf http://localhost:8000/api/samples > /dev/null && echo "✓ App is healthy" || echo "✗ Health check failed"
