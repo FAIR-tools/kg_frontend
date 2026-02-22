@@ -748,4 +748,4 @@ try {
 
 // ── Init ──────────────────────────────────────────────────
 _loadSampleCount();
-// loadGraph is lazy — fires on first click of the Graph tab
+loadGraph();     // pre-load in background so Graph tab is instant
