@@ -87,20 +87,26 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
 
     # Only expose samples that actually exist as AtomicScaleSample nodes in the KG
     _CMSO_SAMPLE = URIRef(f"{_CMSO}AtomicScaleSample")
-    def _exists_as_sample(uri: str) -> bool:
+    def _exists_as_sample(node) -> bool:
+        if node is None:
+            return False
+        try:
+            uri = str(node)
+        except Exception:
+            return False
         return any(True for _ in g.triples((URIRef(uri), RDF.type, _CMSO_SAMPLE)))
 
     # Output samples: sample_uri  PROV.wasGeneratedBy  workflow_uri
     output_samples = [
         str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))
-        if _exists_as_sample(str(s))
+        if s is not None and _exists_as_sample(s)
     ]
 
     # Input samples: output samples that were PROV.wasDerivedFrom something
     input_set: set[str] = set()
     for out_s in output_samples:
         for _, _, in_s in g.triples((URIRef(out_s), _PROV_DERIVED, None)):
-            if _exists_as_sample(str(in_s)):
+            if in_s is not None and _exists_as_sample(in_s):
                 input_set.add(str(in_s))
     input_samples = sorted(input_set)
 

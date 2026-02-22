@@ -652,8 +652,9 @@ async function runNLQ() {
 
 // ── Theme toggle ───────────────────────────────────────────
 function toggleTheme() {
-  const isDark = document.body.dataset.theme !== "light";
-  document.body.dataset.theme = isDark ? "light" : "dark";
+  const root = document.documentElement;
+  const isDark = root.dataset.theme !== "light";
+  root.dataset.theme = isDark ? "light" : "dark";
   const btn = document.getElementById("theme-toggle-btn");
   if (btn) btn.textContent = isDark ? "☀️" : "🌙";
   try { localStorage.setItem("theme", isDark ? "light" : "dark"); } catch(_) {}
@@ -662,7 +663,7 @@ function toggleTheme() {
 try {
   const saved = localStorage.getItem("theme");
   if (saved === "light") {
-    document.body.dataset.theme = "light";
+    document.documentElement.dataset.theme = "light";
     const btn = document.getElementById("theme-toggle-btn");
     if (btn) btn.textContent = "☀️";
   }
