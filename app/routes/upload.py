@@ -7,7 +7,6 @@ rebuild is triggered automatically.
 """
 
 import os
-import shutil
 import threading
 import logging
 import glob
@@ -46,9 +45,10 @@ def _rebuild_worker():
         _rebuild_pending.clear()
         rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
         try:
+            from pathlib import Path as _Path
             from atomrdf import KnowledgeGraph
             from atomrdf.io.workflow_parser import WorkflowParser
-            from app.graph_state import reload_kg
+            from app.graph_state import get_kg, reload_kg
             import app.routes.graph as graph_mod
 
             yaml_files = sorted(
@@ -57,23 +57,48 @@ def _rebuild_worker():
                 glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True) +
                 glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"),  recursive=True)
             )
-            log.info("[rebuild] %d YAML file(s)", len(yaml_files))
+            log.info("[rebuild] %d YAML file(s) found", len(yaml_files))
 
-            if os.path.exists(_DB_PATH):
-                os.remove(_DB_PATH)
-            if os.path.isdir(_STORE_PATH):
-                shutil.rmtree(_STORE_PATH)
+            # Load manifest (path → mtime) to skip already-parsed files
+            _manifest_path = os.path.join(_DATA_ROOT, "parsed_manifest.json")
+            manifest: dict = {}
+            if os.path.exists(_manifest_path):
+                try:
+                    import json as _json
+                    manifest = _json.loads(_Path(_manifest_path).read_text())
+                except Exception:
+                    manifest = {}
+
+            to_parse = [(yf, os.path.getmtime(yf)) for yf in yaml_files
+                        if manifest.get(yf) != os.path.getmtime(yf)]
+
+            if not to_parse:
+                log.info("[rebuild] all files already up-to-date — skipping parse")
+                rebuild_state = {"status": "done", "samples": len(get_kg().sample_ids),
+                                 "errors": [], "started_at": rebuild_state["started_at"]}
+                if not _rebuild_pending.is_set():
+                    break
+                log.info("[rebuild] new upload detected — re-checking")
+                continue
+
+            log.info("[rebuild] %d new/changed file(s) to parse", len(to_parse))
+
+            # Open existing KG (create if absent)
             os.makedirs(_STORE_PATH, exist_ok=True)
-
             kg = KnowledgeGraph(store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH)
             parser = WorkflowParser(kg=kg)
             errors = []
-            for yf in yaml_files:
+            import json as _json
+            for yf, mtime in to_parse:
                 try:
                     parser.parse(yf)
+                    manifest[yf] = mtime
                 except Exception as exc:
                     log.error("[rebuild] failed %s: %s", yf, exc)
                     errors.append(yf)
+
+            # Persist manifest
+            _Path(_manifest_path).write_text(_json.dumps(manifest, indent=2))
 
             graph_mod._graph_cache = None
             graph_mod._graph_cache_mtime = -1.0
