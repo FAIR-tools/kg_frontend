@@ -96,7 +96,7 @@ function closeDetail() {
 }
 
 function openStructureViewer(sampleId, name) {
-  const url = `/viewer/?id=${encodeURIComponent(sampleId)}&name=${encodeURIComponent(name)}`;
+  const url = `/viewer.html?id=${encodeURIComponent(sampleId)}&name=${encodeURIComponent(name)}`;
   window.open(url, "_blank", "noopener");
 }
 
@@ -433,7 +433,14 @@ async function loadGraph() {
           openGraphSampleDetail(node.id, node.label);
         }
       })
+      .cooldownTime(6000)
       .graphData(data);
+
+    // Prevent the ForceGraph canvas from swallowing wheel events and locking
+    // page scroll. Hold Ctrl to zoom instead.
+    container.addEventListener('wheel', e => {
+      if (!e.ctrlKey) e.stopPropagation();
+    }, { capture: true, passive: true });
 
   } catch (e) {
     container.innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load graph: ${escHtml(e.message)}</div>`;

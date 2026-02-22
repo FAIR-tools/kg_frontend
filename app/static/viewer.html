@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Structure Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0f18;
+      color: #e0e4f0;
+      font-family: Inter, system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 12px 20px;
+      background: #13151f;
+      border-bottom: 1px solid #252938;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    #sample-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #c8d0f0;
+    }
+
+    #hint {
+      margin-left: auto;
+      font-size: 11px;
+      color: #5a6080;
+    }
+
+    #viewer-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    #viewer {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      inset: 0;
+    }
+
+    #status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      font-size: 14px;
+      color: #8892b0;
+      pointer-events: none;
+    }
+
+    #status.hidden { display: none; }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(100, 120, 200, 0.2);
+      border-top-color: #6478c8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg { color: #ff6688; text-align: center; padding: 0 16px; }
+
+    .style-bar {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      background: rgba(13, 15, 24, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid #252938;
+      border-radius: 8px;
+      padding: 6px 10px;
+      z-index: 10;
+    }
+
+    .style-bar button {
+      background: none;
+      border: 1px solid #353848;
+      color: #9099c0;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .style-bar button:hover,
+    .style-bar button.active {
+      background: #252938;
+      color: #c8d0f0;
+      border-color: #4a5080;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🔬</span>
+  <span id="sample-name">Structure Viewer</span>
+  <span id="hint">Drag to rotate · Scroll to zoom · Right-drag to pan</span>
+</header>
+
+<div id="viewer-wrap">
+  <div id="viewer"></div>
+
+  <div id="status">
+    <div class="spinner"></div>
+    <span>Loading structure…</span>
+  </div>
+
+  <div class="style-bar" id="style-bar" style="display:none">
+    <button id="btn-ball-stick" class="active" onclick="setStyle('ball-stick')">Ball &amp; Stick</button>
+    <button id="btn-sphere"                   onclick="setStyle('sphere')">Space Fill</button>
+    <button id="btn-stick"                    onclick="setStyle('stick')">Stick</button>
+  </div>
+</div>
+
+<script>
+  const params   = new URLSearchParams(window.location.search);
+  const sampleId = params.get('id')   || '';
+  const name     = params.get('name') || sampleId;
+
+  document.getElementById('sample-name').textContent = name || 'Structure Viewer';
+
+  let _viewer = null;
+
+  function setStyle(mode) {
+    if (!_viewer) return;
+    _viewer.setStyle({}, {});
+    if (mode === 'ball-stick') {
+      _viewer.setStyle({}, { sphere: { colorscheme: 'Jmol', scale: 0.35 }, stick: { colorscheme: 'Jmol', radius: 0.12 } });
+    } else if (mode === 'sphere') {
+      _viewer.setStyle({}, { sphere: { colorscheme: 'Jmol', scale: 0.8 } });
+    } else if (mode === 'stick') {
+      _viewer.setStyle({}, { stick: { colorscheme: 'Jmol', radius: 0.15 } });
+    }
+    _viewer.render();
+    document.querySelectorAll('.style-bar button').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('btn-' + mode.replace('-', '-').replace('ball-stick','ball-stick'));
+    if (btn) btn.classList.add('active');
+    // map mode → button id
+    const idMap = { 'ball-stick': 'btn-ball-stick', 'sphere': 'btn-sphere', 'stick': 'btn-stick' };
+    const activeBtn = document.getElementById(idMap[mode]);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  function showError(msg) {
+    const s = document.getElementById('status');
+    s.innerHTML = `<span class="error-msg">❌ ${msg}</span>`;
+    s.classList.remove('hidden');
+  }
+
+  if (!sampleId) {
+    showError('No sample ID provided.');
+  } else {
+    fetch(`/api/samples/xyz/${encodeURIComponent(sampleId)}`)
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t || `HTTP ${r.status}`); });
+        return r.text();
+      })
+      .then(xyz => {
+        document.getElementById('status').classList.add('hidden');
+        document.getElementById('style-bar').style.display = '';
+
+        _viewer = $3Dmol.createViewer('viewer', {
+          backgroundColor: '#0d0f18',
+          antialias: true,
+        });
+
+        _viewer.addModel(xyz, 'xyz');
+        setStyle('ball-stick');
+        _viewer.zoomTo();
+        _viewer.render();
+
+        window.addEventListener('resize', () => {
+          _viewer.resize();
+          _viewer.render();
+        });
+      })
+      .catch(err => showError(`Failed to load structure: ${err.message}`));
+  }
+</script>
+
+</body>
+</html>

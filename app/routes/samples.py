@@ -28,6 +28,36 @@ def list_samples():
     return result
 
 
+@router.get("/xyz/{sample_id:path}")
+def get_sample_xyz(sample_id: str):
+    """Return the sample structure as an XYZ string for 3Dmol.js rendering."""
+    import io
+    from ase.io import write as ase_write
+    from fastapi.responses import Response as FastResponse
+    from urllib.parse import unquote
+    from rdflib import URIRef
+
+    sample_id = unquote(sample_id)
+    kg = get_kg()
+    sample_uri = URIRef(sample_id)
+
+    try:
+        sample = kg.get_sample_as_structure(sample_uri)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    if sample is None:
+        raise HTTPException(status_code=404, detail="Sample not found")
+
+    try:
+        atoms = sample.to_structure(format="ase")
+        buf = io.StringIO()
+        ase_write(buf, atoms, format="xyz")
+        return FastResponse(content=buf.getvalue(), media_type="text/plain")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not convert to XYZ: {exc}")
+
+
 @router.get("/{sample_id:path}")
 def get_sample(sample_id: str):
     """Return detailed info for a single sample."""
