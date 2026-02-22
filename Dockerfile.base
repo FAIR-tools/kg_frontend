@@ -31,4 +31,6 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 #   their dependencies are already satisfied by the conda env above
 RUN pip install --no-cache-dir \
     "git+https://github.com/RDFLib/rdflib-sqlalchemy.git@develop" && \
-    pip install --no-cache-dir --no-deps atomrdf tools4rdf
+    pip install --no-cache-dir --no-deps \
+        "git+https://github.com/pyscal/atomRDF.git@main" \
+        "git+https://github.com/OCDO/tools4RDF.git@main"
