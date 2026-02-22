@@ -12,8 +12,9 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${tab}`).classList.add("active");
-    if (tab === "samples") loadSamples();
-    if (tab === "graph")   loadGraph();
+    if (tab === "samples")   loadSamples();
+    if (tab === "graph")     loadGraph();
+    if (tab === "workflows") loadWorkflows();
   });
 });
 
@@ -28,6 +29,17 @@ document.querySelectorAll(".subtabs button").forEach(btn => {
     document.getElementById("subtab-ask").style.display    = st === "ask"    ? "" : "none";
   });
 });
+
+const _SAMPLE_URI_PREFIX = "http://purls.helmholtz-metadaten.de/cmso/sample_";
+const _SAMPLE_URI_PATTERN = /^sample:/;
+
+async function _loadSampleCount() {
+  try {
+    const data = await apiFetch("/api/samples");
+    const el = document.getElementById("hdr-sample-count");
+    if (el) el.textContent = data.length;
+  } catch (_) {}
+}
 
 // ═══════════════════════════════════════════════════════════
 // SAMPLES
@@ -130,12 +142,16 @@ let _ontologyClasses = [];
 
 async function loadOntologyClasses() {
   const sel = document.getElementById("src-class");
+  const SAMPLE_URI = "http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample";
   try {
     _ontologyClasses = await apiFetch("/api/ontology/classes");
     sel.innerHTML = '<option value="">— choose a class —</option>' +
       _ontologyClasses.map(c =>
         `<option value="${escAttr(c.uri)}">${escHtml(c.namespace + ":" + c.label)}</option>`
       ).join("");
+    // Pre-select AtomicScaleSample
+    const opt = Array.from(sel.options).find(o => o.value === SAMPLE_URI);
+    if (opt) { opt.selected = true; sel.dispatchEvent(new Event("change")); }
   } catch (e) {
     sel.innerHTML = `<option value="">Failed to load: ${e.message}</option>`;
   }
@@ -221,109 +237,6 @@ document.getElementById("src-class").addEventListener("change", () => {
 function removeFilterRow(id) {
   const row = document.getElementById(`filter-row-${id}`);
   if (row) row.remove();
-}
-
-async function runGuidedQuery() {
-  clearAlert("guided-alert");
-  hideEl("guided-sparql-wrap");
-  hideEl("guided-results-wrap");
-
-  const sourceUri = document.getElementById("src-class").value;
-  if (!sourceUri) {
-    showAlert("guided-alert", "error", "Please select a source class.");
-    return;
-  }
-
-  const destinations = [];
-  let rowId = 1;
-  document.querySelectorAll("[id^=filter-row-]").forEach(row => {
-    const id = row.id.replace("filter-row-", "");
-    const propSel = document.getElementById(`filter-prop-${id}`);
-    const opSel   = document.getElementById(`filter-op-${id}`);
-    const valIn   = document.getElementById(`filter-val-${id}`);
-    if (!propSel || !propSel.value) return;
-    destinations.push({
-      uri: propSel.value,
-      operator: opSel?.value || null,
-      value: valIn?.value || null,
-    });
-  });
-
-  if (!destinations.length) {
-    showAlert("guided-alert", "error", "Add at least one destination property.");
-    return;
-  }
-
-  setLoading("guided-run-btn", true);
-  try {
-    const res = await apiFetch("/api/guided-query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source_uri: sourceUri, destinations }),
-    });
-
-    // Show generated SPARQL
-    if (res.sparql) {
-      document.getElementById("guided-sparql-text").textContent = res.sparql;
-      showEl("guided-sparql-wrap");
-    }
-
-    // Show results
-    if (res.columns && res.columns.length) {
-      const rCount = res.rows.length;
-      document.getElementById("guided-result-count").textContent = `(${rCount} row${rCount !== 1 ? "s" : ""})`;
-      document.getElementById("guided-table-wrap").innerHTML = renderTable(
-        res.columns,
-        res.rows.map(r => res.columns.map(c => r[c] ?? ""))
-      );
-      showEl("guided-results-wrap");
-    } else {
-      showAlert("guided-alert", "info", "Query ran but returned no results.");
-    }
-  } catch (e) {
-    showAlert("guided-alert", "error", e.message);
-  } finally {
-    setLoading("guided-run-btn", false);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// RAW SPARQL
-// ═══════════════════════════════════════════════════════════
-async function runSparql() {
-  clearAlert("sparql-alert");
-  hideEl("sparql-results-wrap");
-
-  const query = document.getElementById("sparql-input").value.trim();
-  if (!query) {
-    showAlert("sparql-alert", "error", "Please enter a SPARQL query.");
-    return;
-  }
-
-  setLoading("sparql-run-btn", true);
-  try {
-    const res = await apiFetch("/api/sparql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-
-    if (res.columns && res.columns.length) {
-      const rCount = res.rows.length;
-      document.getElementById("sparql-result-count").textContent = `(${rCount} row${rCount !== 1 ? "s" : ""})`;
-      document.getElementById("sparql-table-wrap").innerHTML = renderTable(
-        res.columns,
-        res.rows.map(r => res.columns.map(c => r[c] ?? ""))
-      );
-      showEl("sparql-results-wrap");
-    } else {
-      showAlert("sparql-alert", "info", "Query ran but returned no results.");
-    }
-  } catch (e) {
-    showAlert("sparql-alert", "error", e.message);
-  } finally {
-    setLoading("sparql-run-btn", false);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -456,48 +369,6 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-function renderTable(columns, rows, onRowClick) {
-  if (!rows.length) return '<p style="color:var(--text-muted);padding:14px;text-align:center">No results</p>';
-  const thead = `<thead><tr>${columns.map(c => `<th>${escHtml(String(c))}</th>`).join("")}</tr></thead>`;
-  const tbody = `<tbody>${rows.map((row, i) =>
-    `<tr ${onRowClick ? `onclick="(${onRowClick.toString()})(${i})"` : ""}>` +
-    row.map(cell => `<td title="${escAttr(String(cell))}">${escHtml(String(cell))}</td>`).join("") +
-    `</tr>`
-  ).join("")}</tbody>`;
-  return `<table>${thead}${tbody}</table>`;
-}
-
-function renderTable(columns, rows, onRowClick) {
-  if (!rows.length) return '<p style="color:var(--text-muted);padding:14px;text-align:center;font-size:13px">No results</p>';
-  const theadCells = columns.map(c => `<th>${escHtml(String(c))}</th>`).join("");
-  const tbodyRows = rows.map((row, i) => {
-    const tds = row.map(cell => `<td title="${escAttr(String(cell))}">${escHtml(String(cell))}</td>`).join("");
-    const click = onRowClick ? `style="cursor:pointer" data-row="${i}"` : "";
-    return `<tr ${click}>${tds}</tr>`;
-  }).join("");
-  const tableHtml = `<table><thead><tr>${theadCells}</tr></thead><tbody>${tbodyRows}</tbody></table>`;
-
-  // Attach row-click after parse (caller's callback is an index-based fn)
-  if (!onRowClick) return tableHtml;
-  const wrap = document.createElement("div");
-  wrap.innerHTML = tableHtml;
-  wrap.querySelectorAll("tr[data-row]").forEach(tr => {
-    tr.addEventListener("click", () => onRowClick(parseInt(tr.dataset.row, 10)));
-  });
-  return wrap;
-}
-
-// renderTable returns either a string or DOM node
-function setInnerContent(el, content) {
-  if (typeof content === "string") el.innerHTML = content;
-  else { el.innerHTML = ""; el.appendChild(content); }
-}
-
-// Patch calls that do innerHTML to use setInnerContent
-function patchedRenderTable(columns, rows, onRowClick) {
-  return renderTable(columns, rows, onRowClick);
-}
-
 function escHtml(str) {
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -619,6 +490,15 @@ async function runSparql() {
 }
 
 function buildTableDOM(columns, rows) {
+  // Detect columns whose values look like AtomicScaleSample URIs
+  const sampleCols = new Set();
+  if (rows.length) {
+    columns.forEach(c => {
+      const val = String(rows[0][c] ?? "");
+      if (_SAMPLE_URI_PATTERN.test(val)) sampleCols.add(c);
+    });
+  }
+
   const table = document.createElement("table");
   const thead = document.createElement("thead");
   const hrow  = document.createElement("tr");
@@ -627,23 +507,87 @@ function buildTableDOM(columns, rows) {
     th.textContent = String(c);
     hrow.appendChild(th);
   });
+  if (sampleCols.size) {
+    const th = document.createElement("th"); th.textContent = "View"; hrow.appendChild(th);
+  }
   thead.appendChild(hrow);
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
   rows.forEach(row => {
     const tr = document.createElement("tr");
+    let sampleUri = "";
     columns.forEach(c => {
       const td = document.createElement("td");
       const val = String(row[c] ?? "");
       td.textContent = val;
       td.title = val;
       tr.appendChild(td);
+      if (sampleCols.has(c)) sampleUri = val;
     });
+    if (sampleCols.size) {
+      const td = document.createElement("td");
+      if (sampleUri) {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-sm btn-outline";
+        btn.textContent = "🔬 View";
+        btn.onclick = e => { e.stopPropagation(); openStructureViewer(sampleUri, sampleUri.split(":").pop()); };
+        td.appendChild(btn);
+      }
+      tr.appendChild(td);
+    }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
   return table;
+}
+
+// ═══════════════════════════════════════════════════════════
+// WORKFLOWS
+// ═══════════════════════════════════════════════════════════
+let _workflowsLoaded = false;
+
+async function loadWorkflows() {
+  if (_workflowsLoaded) return;
+  _workflowsLoaded = true;
+  showEl("workflows-loading");
+  hideEl("workflows-table-wrap");
+  hideEl("workflows-empty");
+  clearAlert("workflows-alert");
+
+  try {
+    const res = await apiFetch("/api/workflows");
+    const wfs = res.workflows || [];
+    hideEl("workflows-loading");
+
+    const countEl = document.getElementById("hdr-workflow-count");
+    if (countEl) countEl.textContent = wfs.length;
+
+    if (!wfs.length) { showEl("workflows-empty"); return; }
+
+    const thead = `<thead><tr>
+      <th>ID</th><th>Type</th><th>Software / DOI</th><th>Potential</th><th>Linked Samples</th>
+    </tr></thead>`;
+    const tbody = wfs.map(w => {
+      const id    = escHtml(w.id);
+      const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
+      const sw    = w.software
+        ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
+        : '—';
+      const pot   = escHtml(w.potential || '—');
+      const sLinks = w.samples.length
+        ? w.samples.map(s => `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(s.split(':').pop().slice(0,8))}</button>`).join(" ")
+        : '—';
+      return `<tr><td title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${id}</td><td>${badge}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
+    }).join("");
+
+    const wrap = document.getElementById("workflows-table-wrap");
+    wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
+    showEl("workflows-table-wrap");
+  } catch (e) {
+    hideEl("workflows-loading");
+    showAlert("workflows-alert", "error", `Failed to load workflows: ${e.message}`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -698,5 +642,24 @@ async function runNLQ() {
   }
 }
 
+// ── Theme toggle ───────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.body.dataset.theme !== "light";
+  document.body.dataset.theme = isDark ? "light" : "dark";
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.textContent = isDark ? "☀️" : "🌙";
+  try { localStorage.setItem("theme", isDark ? "light" : "dark"); } catch(_) {}
+}
+// Restore saved theme on load
+try {
+  const saved = localStorage.getItem("theme");
+  if (saved === "light") {
+    document.body.dataset.theme = "light";
+    const btn = document.getElementById("theme-toggle-btn");
+    if (btn) btn.textContent = "☀️";
+  }
+} catch(_) {}
+
 // ── Init ──────────────────────────────────────────────────
+_loadSampleCount();
 loadGraph();

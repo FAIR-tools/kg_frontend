@@ -18,12 +18,17 @@
     <div class="stat-chip">
       Samples: <strong id="hdr-sample-count">—</strong>
     </div>
+    <div class="stat-chip">
+      Workflows: <strong id="hdr-workflow-count">—</strong>
+    </div>
+    <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light/dark mode" onclick="toggleTheme()">🌙</button>
   </div>
 </header>
 
 <nav id="main-nav">
   <button class="active" data-tab="graph">Graph</button>
   <button data-tab="samples">Samples</button>
+  <button data-tab="workflows">Workflows</button>
   <button data-tab="query">Query</button>
   <button data-tab="export">Export</button>
 </nav>
@@ -84,6 +89,23 @@
         </div>
       </div>
       <div class="detail-grid" id="detail-grid"></div>
+    </div>
+  </div>
+
+  <!-- ───────────── WORKFLOWS TAB ───────────── -->
+  <div class="tab-panel" id="tab-workflows">
+    <div class="panel-header">
+      <h2>Workflows</h2>
+      <p>Computational simulation workflows recorded in the knowledge graph.</p>
+    </div>
+    <div id="workflows-alert"></div>
+    <div class="card" id="workflows-card">
+      <div id="workflows-loading" class="empty"><div class="spinner"></div></div>
+      <div id="workflows-table-wrap" style="display:none"></div>
+      <div id="workflows-empty" class="empty" style="display:none">
+        <div class="icon">⚙️</div>
+        <p>No workflows found in the knowledge graph.</p>
+      </div>
     </div>
   </div>
 
@@ -168,10 +190,15 @@ WHERE {
 
   <!-- Ask (NLQ) sub-tab -->
   <div id="subtab-ask" style="display:none">
+    <div class="notice">
+      ⚠️ <span><strong>Experimental feature.</strong> An LLM translates your question into a knowledge graph query. Results may be incomplete or incorrect — always verify against the raw SPARQL output shown below.</span>
+    </div>
     <div class="card">
       <div class="card-title">Ask in plain language</div>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
-        Describe what you are looking for and an LLM will translate it into a knowledge graph query.
+        Powered by <a href="https://groq.com" target="_blank" rel="noopener" style="color:var(--accent-hover)">Groq</a> +
+        <a href="https://github.com/OCDO/tools4RDF" target="_blank" rel="noopener" style="color:var(--accent-hover)">tools4RDF</a>.
+        Try: <em>"Find all samples with 4 atoms"</em>, <em>"Show space group of all samples"</em>
       </p>
       <label for="nlq-input">Your question</label>
       <textarea id="nlq-input" class="mono" rows="3"
@@ -233,7 +260,21 @@ WHERE {
 
 </main>
 
+<footer>
+  <span>AtomRDF Knowledge Graph</span>
+  <span class="sep">|</span>
+  <a href="https://github.com/pyscal/atomRDF" target="_blank" rel="noopener">atomRDF</a>
+  <span class="sep">|</span>
+  <a href="https://github.com/OCDO/tools4RDF" target="_blank" rel="noopener">tools4RDF</a>
+  <span class="sep">|</span>
+  <a href="https://github.com/OCDO/" target="_blank" rel="noopener">OCDO on GitHub</a>
+  <span class="sep">|</span>
+  <a href="https://www.helmholtz-metadaten.de/" target="_blank" rel="noopener">Helmholtz Metadata Collaboration</a>
+  <span class="sep">|</span>
+  <a href="https://purls.helmholtz-metadaten.de/cmso/" target="_blank" rel="noopener">CMSO Ontology</a>
+</footer>
+
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260222g"></script>
+<script src="app.js?v=20260222h"></script>
 </body>
 </html>
