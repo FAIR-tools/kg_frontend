@@ -59,16 +59,24 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     ]
     software = software_uris[0] if software_uris else ""
 
-    # Interatomic potential label
+    # Interatomic potential — get label, or fall back to rdf:type local name
     pot_node = g.value(wf_uri, _ASMO_POT)
     potential = ""
     if pot_node:
         pot_label = g.value(pot_node, RDFS.label)
-        potential = str(pot_label) if pot_label else _local(str(pot_node))
+        if pot_label:
+            potential = str(pot_label)
+        else:
+            pot_type = g.value(pot_node, RDF.type)
+            potential = _local(str(pot_type)) if pot_type else _local(str(pot_node))
 
-    # Computational method sub-type (e.g. MolecularDynamics, DensityFunctionalTheory)
+    # Computational method sub-type — look up rdf:type of the method node
+    # (e.g. asmo:MolecularDynamics, asmo:MolecularStatics, asmo:DensityFunctionalTheory)
     method_node = g.value(wf_uri, _ASMO_METHOD)
-    method = _local(str(method_node)) if method_node else ""
+    method = ""
+    if method_node:
+        method_type = g.value(method_node, RDF.type)
+        method = _local(str(method_type)) if method_type else _local(str(method_node))
 
     # Output samples: sample_uri  PROV.wasGeneratedBy  workflow_uri
     output_samples = [str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))]
