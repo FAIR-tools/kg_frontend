@@ -30,54 +30,76 @@ _GIT_YAML_DIR = "/kg_data/data"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-# ── Background rebuild ──────────────────────────────────────────────────────
+# ── Rebuild state & worker ───────────────────────────────────────────────────
+# _rebuild_pending is set whenever a file is saved.
+# The worker clears it, runs a full rebuild, then checks if it was re-set
+# (a concurrent upload arrived mid-rebuild) and loops again if so.
+# This guarantees N simultaneous uploads collapse into one correct final rebuild.
+_rebuild_pending = threading.Event()
+_rebuild_active  = threading.Event()   # True while the worker thread is alive
 rebuild_state: dict = {"status": "idle", "started_at": None}
 
 
-def _run_rebuild():
+def _rebuild_worker():
     global rebuild_state
-    rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
-    try:
-        from atomrdf import KnowledgeGraph
-        from atomrdf.io.workflow_parser import WorkflowParser
-        from app.graph_state import reload_kg
-        import app.routes.graph as graph_mod
+    while True:
+        _rebuild_pending.clear()
+        rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
+        try:
+            from atomrdf import KnowledgeGraph
+            from atomrdf.io.workflow_parser import WorkflowParser
+            from app.graph_state import reload_kg
+            import app.routes.graph as graph_mod
 
-        yaml_files = sorted(
-            glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yaml"), recursive=True) +
-            glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yml"),  recursive=True) +
-            glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True) +
-            glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"),  recursive=True)
-        )
-        log.info("[rebuild] %d YAML file(s)", len(yaml_files))
+            yaml_files = sorted(
+                glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yaml"), recursive=True) +
+                glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yml"),  recursive=True) +
+                glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True) +
+                glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"),  recursive=True)
+            )
+            log.info("[rebuild] %d YAML file(s)", len(yaml_files))
 
-        if os.path.exists(_DB_PATH):
-            os.remove(_DB_PATH)
-        if os.path.isdir(_STORE_PATH):
-            shutil.rmtree(_STORE_PATH)
-        os.makedirs(_STORE_PATH, exist_ok=True)
+            if os.path.exists(_DB_PATH):
+                os.remove(_DB_PATH)
+            if os.path.isdir(_STORE_PATH):
+                shutil.rmtree(_STORE_PATH)
+            os.makedirs(_STORE_PATH, exist_ok=True)
 
-        kg = KnowledgeGraph(store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH)
-        parser = WorkflowParser(kg=kg)
-        errors = []
-        for yf in yaml_files:
-            try:
-                parser.parse(yf)
-            except Exception as exc:
-                log.error("[rebuild] failed %s: %s", yf, exc)
-                errors.append(yf)
+            kg = KnowledgeGraph(store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH)
+            parser = WorkflowParser(kg=kg)
+            errors = []
+            for yf in yaml_files:
+                try:
+                    parser.parse(yf)
+                except Exception as exc:
+                    log.error("[rebuild] failed %s: %s", yf, exc)
+                    errors.append(yf)
 
-        graph_mod._graph_cache = None
-        graph_mod._graph_cache_mtime = -1.0
-        reload_kg()
+            graph_mod._graph_cache = None
+            graph_mod._graph_cache_mtime = -1.0
+            reload_kg()
 
-        n = len(kg.sample_ids)
-        log.info("[rebuild] done — %d sample(s), %d error(s)", n, len(errors))
-        rebuild_state = {"status": "done", "samples": n, "errors": errors,
-                         "started_at": rebuild_state["started_at"]}
-    except Exception as e:
-        log.error("[rebuild] unexpected error: %s", e)
-        rebuild_state["status"] = f"error: {e}"
+            n = len(kg.sample_ids)
+            log.info("[rebuild] done — %d sample(s), %d error(s)", n, len(errors))
+            rebuild_state = {"status": "done", "samples": n, "errors": errors,
+                             "started_at": rebuild_state["started_at"]}
+        except Exception as e:
+            log.error("[rebuild] unexpected error: %s", e)
+            rebuild_state["status"] = f"error: {e}"
+
+        # Another file arrived while we were rebuilding — loop immediately
+        if not _rebuild_pending.is_set():
+            break
+        log.info("[rebuild] new upload detected mid-rebuild — re-running")
+
+    _rebuild_active.clear()
+
+
+def _trigger_rebuild():
+    _rebuild_pending.set()
+    if not _rebuild_active.is_set():
+        _rebuild_active.set()
+        threading.Thread(target=_rebuild_worker, daemon=True).start()
 
 
 # ── Upload endpoint ────────────────────────────────────────────────────────────
@@ -107,8 +129,7 @@ async def submit_file(
         fh.write(content)
     log.info("[upload] saved %s (%d bytes)", safe_name, len(content))
 
-    if rebuild_state.get("status") != "running":
-        threading.Thread(target=_run_rebuild, daemon=True).start()
+    _trigger_rebuild()
 
     return {"status": "rebuilding", "filename": safe_name, "bytes": len(content)}
 
