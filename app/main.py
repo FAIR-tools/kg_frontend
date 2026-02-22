@@ -1,11 +1,9 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.wsgi import WSGIMiddleware
 import os
 
 from app.routes import sparql, guided, ontology, samples, export, admin, graph
-from app.viewer_dash import viewer_wsgi
 
 app = FastAPI(
     title="AtomRDF Knowledge Graph",
@@ -30,9 +28,14 @@ app.include_router(export.router)
 app.include_router(admin.router)
 app.include_router(graph.router)
 
-# Crystal Toolkit structure viewer (Dash WSGI sub-app)
-# Must be mounted BEFORE static files so /viewer/* is not intercepted
-app.mount("/viewer", WSGIMiddleware(viewer_wsgi))
+# Crystal Toolkit structure viewer (Dash WSGI sub-app) — loaded lazily
+# so the app still starts if crystal-toolkit isn't installed yet.
+try:
+    from starlette.middleware.wsgi import WSGIMiddleware
+    from app.viewer_dash import viewer_wsgi
+    app.mount("/viewer", WSGIMiddleware(viewer_wsgi))
+except ImportError:
+    pass  # crystal-toolkit not yet installed; /viewer unavailable until base image rebuild
 
 # Serve the static frontend at /
 # Must be mounted AFTER routes so /api/* is not intercepted
