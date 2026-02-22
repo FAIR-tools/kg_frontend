@@ -65,9 +65,12 @@ def run_guided_query(req: GuidedQueryRequest):
             term = getattr(copy.copy(term), op_method)(val)
         dest_terms.append(term)
 
-    # Generate the SPARQL string first so we can return it
+    # Generate the SPARQL string first so we can return it.
+    # IMPORTANT: onto.create_query() calls refresh() on dest_terms at the end,
+    # resetting _condition to None.  Deep-copy so the originals stay intact for onto.query().
+    import copy as _copy
     try:
-        sparql_string = onto.create_query(source_term, dest_terms)
+        sparql_string = onto.create_query(source_term, _copy.deepcopy(dest_terms))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Query generation failed: {exc}")
 
