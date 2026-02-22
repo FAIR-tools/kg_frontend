@@ -59,16 +59,23 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     ]
     software = software_uris[0] if software_uris else ""
 
-    # Interatomic potential — get label, or fall back to rdf:type local name
+    # Interatomic potential — label + publication URI (CMSO.hasReference) + type
+    _CMSO_REF = URIRef(f"{_CMSO}hasReference")
     pot_node = g.value(wf_uri, _ASMO_POT)
     potential = ""
+    potential_uri = ""
     if pot_node:
-        pot_label = g.value(pot_node, RDFS.label)
+        pot_label  = g.value(pot_node, RDFS.label)
+        pot_ref    = g.value(pot_node, _CMSO_REF)   # publication / DOI URI
+        pot_type   = g.value(pot_node, RDF.type)
+        if pot_ref:
+            potential_uri = str(pot_ref)
         if pot_label:
             potential = str(pot_label)
+        elif pot_type:
+            potential = _local(str(pot_type))
         else:
-            pot_type = g.value(pot_node, RDF.type)
-            potential = _local(str(pot_type)) if pot_type else _local(str(pot_node))
+            potential = _local(str(pot_node))
 
     # Computational method sub-type — look up rdf:type of the method node
     # (e.g. asmo:MolecularDynamics, asmo:MolecularStatics, asmo:DensityFunctionalTheory)
@@ -78,14 +85,23 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
         method_type = g.value(method_node, RDF.type)
         method = _local(str(method_type)) if method_type else _local(str(method_node))
 
+    # Only expose samples that actually exist as AtomicScaleSample nodes in the KG
+    _CMSO_SAMPLE = URIRef(f"{_CMSO}AtomicScaleSample")
+    def _exists_as_sample(uri: str) -> bool:
+        return any(True for _ in g.triples((URIRef(uri), RDF.type, _CMSO_SAMPLE)))
+
     # Output samples: sample_uri  PROV.wasGeneratedBy  workflow_uri
-    output_samples = [str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))]
+    output_samples = [
+        str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))
+        if _exists_as_sample(str(s))
+    ]
 
     # Input samples: output samples that were PROV.wasDerivedFrom something
     input_set: set[str] = set()
     for out_s in output_samples:
         for _, _, in_s in g.triples((URIRef(out_s), _PROV_DERIVED, None)):
-            input_set.add(str(in_s))
+            if _exists_as_sample(str(in_s)):
+                input_set.add(str(in_s))
     input_samples = sorted(input_set)
 
     # Filesystem / archive path
@@ -99,6 +115,7 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
         "method":         method,
         "software":       software,
         "potential":      potential,
+        "potential_uri":  potential_uri,
         "path":           path,
         "input_samples":  input_samples,
         "output_samples": output_samples,

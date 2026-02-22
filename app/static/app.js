@@ -575,7 +575,9 @@ async function loadWorkflows() {
       const sw    = w.software
         ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
         : '—';
-      const pot   = escHtml(w.potential || '—');
+      const pot = w.potential_uri
+        ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--accent-hover);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
+        : escHtml(w.potential || '—');
       // output_samples linked via PROV.wasGeneratedBy
       const samples = w.output_samples || w.samples || [];
       const sLinks = samples.length
