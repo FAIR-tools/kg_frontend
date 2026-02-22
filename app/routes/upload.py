@@ -61,13 +61,28 @@ def _rebuild_worker():
 
             # Load manifest (path → mtime) to skip already-parsed files
             _manifest_path = os.path.join(_DATA_ROOT, "parsed_manifest.json")
+            import json as _json
             manifest: dict = {}
-            if os.path.exists(_manifest_path):
+            no_manifest = not os.path.exists(_manifest_path)
+            if not no_manifest:
                 try:
-                    import json as _json
                     manifest = _json.loads(_Path(_manifest_path).read_text())
                 except Exception:
                     manifest = {}
+                    no_manifest = True
+
+            # If DB exists but manifest doesn't, the DB was built by the old
+            # scratch-rebuild code — re-parsing into it would create duplicates.
+            # Close the app's KG first to release file descriptors, then wipe.
+            if no_manifest and os.path.exists(_DB_PATH):
+                log.info("[rebuild] no manifest found — closing KG and wiping DB to prevent duplicates")
+                from app.graph_state import close_kg
+                close_kg()
+                os.remove(_DB_PATH)
+                if os.path.isdir(_STORE_PATH):
+                    import shutil as _shutil
+                    _shutil.rmtree(_STORE_PATH)
+                os.makedirs(_STORE_PATH, exist_ok=True)
 
             to_parse = [(yf, os.path.getmtime(yf)) for yf in yaml_files
                         if manifest.get(yf) != os.path.getmtime(yf)]

@@ -40,8 +40,32 @@ def reload_kg() -> KnowledgeGraph:
     global _kg
     if _kg is not None:
         try:
+            # Dispose the SQLAlchemy engine to fully release all file descriptors.
+            # Without this, the connection pool keeps the DB file open even after
+            # rdflib's graph.close(), which prevents the rebuild from safely deleting it.
+            engine = _kg.graph.store._engine  # type: ignore[attr-defined]
+            engine.dispose()
+        except Exception:
+            pass
+        try:
             _kg.graph.close()
         except Exception:
             pass
     _kg = None
     return get_kg()
+
+
+def close_kg() -> None:
+    """Close and release the KG without reopening. Used before a full DB wipe."""
+    global _kg
+    if _kg is not None:
+        try:
+            engine = _kg.graph.store._engine  # type: ignore[attr-defined]
+            engine.dispose()
+        except Exception:
+            pass
+        try:
+            _kg.graph.close()
+        except Exception:
+            pass
+    _kg = None
