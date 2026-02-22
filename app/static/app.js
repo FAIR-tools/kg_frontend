@@ -309,15 +309,27 @@ async function runSparql() {
 // ═══════════════════════════════════════════════════════════
 // GRAPH
 // ═══════════════════════════════════════════════════════════
+// Solid accent colours (used for borders/rings)
 const NODE_COLORS = {
-  sample:      "#5c6bc0",
-  structure:   "#29b6f6",
-  element:     "#4caf50",
-  material:    "#ef5350",
-  calculation: "#ab47bc",
-  potential:   "#ff9800",
-  property:    "#ffca28",
-  other:       "#546e7a",
+  sample:      "#7986cb",
+  structure:   "#4fc3f7",
+  element:     "#66bb6a",
+  material:    "#ef9a9a",
+  calculation: "#ce93d8",
+  potential:   "#ffb74d",
+  property:    "#fff176",
+  other:       "#78909c",
+};
+// Translucent fill versions
+const NODE_FILLS = {
+  sample:      "rgba(121,134,203,0.65)",
+  structure:   "rgba(79,195,247,0.55)",
+  element:     "rgba(102,187,106,0.55)",
+  material:    "rgba(239,154,154,0.55)",
+  calculation: "rgba(206,147,216,0.55)",
+  potential:   "rgba(255,183,77,0.55)",
+  property:    "rgba(255,241,118,0.55)",
+  other:       "rgba(120,144,156,0.45)",
 };
 
 let _graphInstance = null;
@@ -343,37 +355,71 @@ async function loadGraph() {
 
     container.innerHTML = "";
 
+    let _hoveredNode = null;
+
     _graphInstance = ForceGraph()(container)
       .width(container.offsetWidth || 900)
       .height(520)
-      .backgroundColor("#0f1117")
+      .backgroundColor("#0d0f18")
       .nodeId("id")
-      .nodeLabel(n => `${n.label}\n(${n.group})`)
-      .nodeColor(n => NODE_COLORS[n.group] || NODE_COLORS.other)
-      .nodeVal(n => n.group === "sample" ? 16 : 4)
-      .nodeCanvasObjectMode(n => n.group === "sample" ? "after" : undefined)
+      .nodeLabel(n => `${n.label} (${n.group})`)  // tooltip on hover
+      .nodeRelSize(1)
+      .nodeVal(n => {
+        // degree-based size; samples slightly larger
+        const base = n.group === "sample" ? 10 : 5;
+        return base + Math.sqrt(Math.max(0, n.degree || 0)) * 2;
+      })
+      .nodeCanvasObjectMode(() => "replace")
       .nodeCanvasObject((node, ctx, globalScale) => {
-        // Draw label below sample nodes when zoomed in
-        if (globalScale < 1.4) return;
-        const label = node.label;
-        const fontSize = 10 / globalScale;
-        ctx.font = `500 ${fontSize}px Inter, sans-serif`;
-        ctx.fillStyle = "#e2e4ef";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillText(label, node.x, node.y + 7);
+        const isSample = node.group === "sample";
+        const isHovered = node === _hoveredNode;
+        const base = isSample ? 10 : 5;
+        const r = Math.sqrt(base + Math.sqrt(Math.max(0, node.degree || 0)) * 2);
+
+        // Filled circle
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = NODE_FILLS[node.group] || NODE_FILLS.other;
+        ctx.fill();
+
+        // Border ring
+        ctx.strokeStyle = (isHovered || isSample)
+          ? (NODE_COLORS[node.group] || NODE_COLORS.other)
+          : "rgba(255,255,255,0.18)";
+        ctx.lineWidth = isSample ? 1.2 / globalScale : 0.6 / globalScale;
+        ctx.stroke();
+
+        // Label: always for hovered, always for samples, small for others when zoomed
+        const showLabel = isHovered || isSample || globalScale > 2;
+        if (showLabel) {
+          const fontSize = isSample
+            ? Math.max(7, 11 / globalScale)
+            : Math.max(5, 9 / globalScale);
+          ctx.font = `${isSample ? "600" : "400"} ${fontSize}px Inter, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          // subtle text shadow
+          ctx.fillStyle = "rgba(8,10,24,0.7)";
+          ctx.fillText(node.label, node.x + 0.4, node.y + r + 1.4);
+          ctx.fillStyle = isSample ? "rgba(210,218,255,0.95)" : "rgba(180,190,220,0.80)";
+          ctx.fillText(node.label, node.x, node.y + r + 1);
+        }
       })
       .linkLabel(l => l.label)
-      .linkColor(() => "rgba(46,50,72,0.8)")
-      .linkDirectionalArrowLength(3)
+      .linkColor(() => "rgba(80,90,130,0.35)")
+      .linkWidth(0.6)
+      .linkDirectionalArrowLength(2.5)
       .linkDirectionalArrowRelPos(1)
+      .linkDirectionalParticles(0)
+      .onNodeHover(node => {
+        _hoveredNode = node || null;
+        container.style.cursor = (node && node.group === "sample") ? "pointer" : "default";
+        _graphInstance && _graphInstance.refresh();
+      })
       .onNodeClick(node => {
         if (node.group === "sample") {
           openGraphSampleDetail(node.id, node.label);
         }
-      })
-      .onNodeHover(node => {
-        container.style.cursor = (node && node.group === "sample") ? "pointer" : "default";
       })
       .graphData(data);
 

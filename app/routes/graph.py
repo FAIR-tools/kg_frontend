@@ -30,10 +30,10 @@ def _local(uri: str) -> str:
 
 
 def _group(uri: str) -> str:
-    """Classify a node into a display group based on URI keywords."""
+    """Classify a node into a display group based on URI keywords.
+    NOTE: never returns 'sample' — that is set only when the URI is a known sample instance.
+    """
     u = uri.lower()
-    if "sample" in u:
-        return "sample"
     if "element" in u:
         return "element"
     if "potential" in u or "interatomic" in u:
@@ -133,5 +133,14 @@ def get_graph():
             nodes_map[uri]["label"] = sample_labels.get(uri, nodes_map[uri]["label"])
             nodes_map[uri]["type"] = "sample"
             nodes_map[uri]["group"] = "sample"
+
+    # ── 5. Compute degree (connection count) for each node ─────────────────
+    from collections import defaultdict
+    degree_count: dict[str, int] = defaultdict(int)
+    for link in links:
+        degree_count[link["source"]] += 1
+        degree_count[link["target"]] += 1
+    for uri, node in nodes_map.items():
+        node["degree"] = degree_count.get(uri, 0)
 
     return {"nodes": list(nodes_map.values()), "links": links}
