@@ -41,5 +41,7 @@ jobs:
             docker compose up --build -d
 
             echo "── Waiting for health check ──"
-            sleep 10
+            sleep 15
+            echo "── Container logs ──"
+            docker logs kg_frontend_app --tail 60
             curl -sf http://localhost:8000/api/samples > /dev/null && echo "✓ App is healthy" || echo "✗ Health check failed"
