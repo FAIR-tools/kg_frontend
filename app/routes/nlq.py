@@ -32,87 +32,42 @@ def _build_system_prompt() -> str:
     if _system_prompt_cache is not None:
         return _system_prompt_cache
 
-    classes = get_class_list()
-
-    # Fetch properties reachable from AtomicScaleSample (primary source)
+    # Fetch properties reachable from AtomicScaleSample, cap at 50 to stay within token limits
     try:
-        primary_props = get_properties_for_class(_PRIMARY_SOURCE_URI)
+        all_props = get_properties_for_class(_PRIMARY_SOURCE_URI)
+        # Prefer data properties first; deduplicate and limit
+        data_props  = [p for p in all_props if p["property_type"] == "data_property"][:30]
+        obj_props   = [p for p in all_props if p["property_type"] == "object_property"][:20]
+        primary_props = data_props + obj_props
     except Exception:
         primary_props = []
 
-    lines: list[str] = []
-    lines.append(
-        "You are a query assistant for a materials science RDF knowledge graph "
-        "built with the CMSO/ASMO ontologies.\n"
+    BASE = "http://purls.helmholtz-metadaten.de/cmso/"
+
+    prop_lines = "\n".join(
+        f"  {p['label']} ({p['property_type'][0]}): {p['uri']}"
+        for p in primary_props
     )
 
-    # ── Available source classes ──────────────────────────────────────────────
-    lines.append("## Available source classes (use 'uri' as source_uri)")
-    for c in classes:
-        lines.append(f"  ns:{c['namespace']}  label:{c['label']}  uri:{c['uri']}")
+    _system_prompt_cache = f"""You are a query-builder for a materials-science RDF knowledge graph (CMSO/ASMO ontologies).
 
-    # ── Properties reachable from AtomicScaleSample ───────────────────────────
-    lines.append(
-        f"\n## Properties reachable from AtomicScaleSample  ({_PRIMARY_SOURCE_URI})"
-    )
-    lines.append("(These are the most common destination properties to query.)")
-    if primary_props:
-        for p in primary_props:
-            lines.append(
-                f"  ns:{p['namespace']}  label:{p['label']}  type:{p['property_type']}  uri:{p['uri']}"
-            )
-    else:
-        lines.append("  (none cached yet — check /api/ontology/classes for the full list)")
+Always use this source class:
+  source_uri: {_PRIMARY_SOURCE_URI}
 
-    # ── Output schema ─────────────────────────────────────────────────────────
-    lines.append(
-        """
-## Output schema
-Respond with ONLY a valid JSON object — no explanation, no markdown fences.
+Available destination properties (d=data, o=object):
+{prop_lines}
 
-{
-  "source_uri": "<URI of the starting class>",
-  "destinations": [
-    {
-      "uri": "<URI of a destination property>",
-      "operator": "<one of: ==  !=  >  >=  <  <=   — omit the key if no filter>",
-      "value": "<filter value as a string — omit the key if no filter>"
-    }
-  ]
-}
+Respond with ONLY a JSON object — no markdown, no explanation:
+{{"source_uri":"<uri>","destinations":[{{"uri":"<prop uri>","operator":"<== != > >= < <=  — omit if no filter>","value":"<string — omit if no filter>"}}]}}
 
-Rules:
-- source_uri MUST be an exact URI from the class list above.
-- Each destination uri MUST be a property URI from the property list above.
-- Include a destination WITHOUT operator/value to simply retrieve that property.
-- Include operator + value to filter results (e.g. number of atoms == 4).
-- Use at least one destination.
-- Cast numeric values to strings (e.g. "4", "3.14").
-"""
-    )
+Rules: source_uri must be exact. Each destination uri must be exact. Omit operator+value for retrieval-only. Numeric values as strings.
 
-    # ── Few-shot examples ─────────────────────────────────────────────────────
-    lines.append(
-        """## Examples
+Examples:
+Q: samples with 4 atoms → {{"source_uri":"{BASE}AtomicScaleSample","destinations":[{{"uri":"{BASE}hasNumberOfAtoms","operator":"==","value":"4"}}]}}
+Q: space group of all samples → {{"source_uri":"{BASE}AtomicScaleSample","destinations":[{{"uri":"{BASE}hasSpaceGroupSymbol"}}]}}
+Q: samples with more than 50 atoms → {{"source_uri":"{BASE}AtomicScaleSample","destinations":[{{"uri":"{BASE}hasNumberOfAtoms","operator":">","value":"50"}}]}}
+Q: chemical formula of all samples → {{"source_uri":"{BASE}AtomicScaleSample","destinations":[{{"uri":"{BASE}hasChemicalFormula"}}]}}"""
 
-User: Find all samples and their space group symbols
-{"source_uri":"http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample","destinations":[{"uri":"http://purls.helmholtz-metadaten.de/cmso/hasSpaceGroupSymbol"}]}
-
-User: Find all samples with exactly 4 atoms
-{"source_uri":"http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample","destinations":[{"uri":"http://purls.helmholtz-metadaten.de/cmso/hasNumberOfAtoms","operator":"==","value":"4"}]}
-
-User: Find samples with more than 100 atoms
-{"source_uri":"http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample","destinations":[{"uri":"http://purls.helmholtz-metadaten.de/cmso/hasNumberOfAtoms","operator":">","value":"100"}]}
-
-User: Show samples with their chemical formula
-{"source_uri":"http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample","destinations":[{"uri":"http://purls.helmholtz-metadaten.de/cmso/hasChemicalFormula"}]}
-
-User: Find samples with cubic crystal structure
-{"source_uri":"http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample","destinations":[{"uri":"http://purls.helmholtz-metadaten.de/cmso/hasCrystalStructure"}]}
-"""
-    )
-
-    _system_prompt_cache = "\n".join(lines)
     return _system_prompt_cache
 
 
