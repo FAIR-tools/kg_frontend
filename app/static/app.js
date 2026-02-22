@@ -50,14 +50,18 @@ async function loadSamples() {
       return;
     }
     const wrap = document.getElementById("samples-table-wrap");
-    wrap.innerHTML = renderTable(
-      ["Name", "URI"],
-      data.map(s => [
-        s.name || "—",
-        `<span class="wrap" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${s.id}</span>`
-      ]),
-      (i) => openSampleDetail(data[i].id, data[i].name)
-    );
+    // Build table with action button column manually (escHtml-safe)
+    const thead = `<thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead>`;
+    const tbody = data.map((s, i) => {
+      const name = escHtml(s.name || "—");
+      const uri  = escHtml(s.id);
+      const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬 View</button>`;
+      return `<tr style="cursor:pointer" data-row="${i}"><td>${name}</td><td><span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${uri}</span></td><td>${viewBtn}</td></tr>`;
+    }).join("");
+    wrap.innerHTML = `<table><thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead><tbody>${tbody}</tbody></table>`;
+    wrap.querySelectorAll("tr[data-row]").forEach(tr => {
+      tr.addEventListener("click", () => openSampleDetail(data[parseInt(tr.dataset.row, 10)].id, data[parseInt(tr.dataset.row, 10)].name));
+    });
     showEl("samples-table-wrap");
   } catch (e) {
     hideEl("samples-loading");
@@ -79,6 +83,9 @@ async function openSampleDetail(sampleId, name) {
   try {
     const d = await apiFetch(`/api/samples/${encodeURIComponent(sampleId)}`);
     grid.innerHTML = renderDetailGrid(d);
+    // Show View Structure button
+    document.getElementById("detail-view-btn").onclick = () => openStructureViewer(sampleId, name);
+    document.getElementById("detail-view-btn").style.display = "";
   } catch (e) {
     grid.innerHTML = `<div class="alert alert-error">Could not load sample: ${e.message}</div>`;
   }
@@ -86,6 +93,11 @@ async function openSampleDetail(sampleId, name) {
 
 function closeDetail() {
   document.getElementById("sample-detail").classList.remove("open");
+}
+
+function openStructureViewer(sampleId, name) {
+  const url = `/viewer/?id=${encodeURIComponent(sampleId)}&name=${encodeURIComponent(name)}`;
+  window.open(url, "_blank", "noopener");
 }
 
 function renderDetailGrid(obj, prefix = "") {
@@ -441,6 +453,8 @@ async function openGraphSampleDetail(sampleId, name) {
   try {
     const d = await apiFetch(`/api/samples/${encodeURIComponent(sampleId)}`);
     grid.innerHTML = renderDetailGrid(d);
+    document.getElementById("graph-detail-view-btn").onclick = () => openStructureViewer(sampleId, name);
+    document.getElementById("graph-detail-view-btn").style.display = "";
   } catch (e) {
     grid.innerHTML = `<div class="alert alert-error">Could not load sample: ${escHtml(e.message)}</div>`;
   }

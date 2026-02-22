@@ -24,3 +24,4 @@ dependencies:
   - pip:
     - atomman
     - aimsgb
+    - crystal-toolkit
