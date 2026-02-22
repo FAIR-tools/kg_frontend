@@ -190,9 +190,6 @@ WHERE {
 
   <!-- Ask (NLQ) sub-tab -->
   <div id="subtab-ask" style="display:none">
-    <div class="notice">
-      ⚠️ <span><strong>Experimental feature.</strong> An LLM translates your question into a knowledge graph query. Results may be incomplete or incorrect — always verify against the raw SPARQL output shown below.</span>
-    </div>
     <div class="card">
       <div class="card-title">Ask in plain language</div>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
@@ -229,6 +226,7 @@ WHERE {
         <div class="table-wrap" id="nlq-table-wrap"></div>
       </div>
     </div>
+    <p style="color:var(--text-muted);font-size:11px;margin-top:16px">Experimental: an LLM translates your question into a SPARQL query. Results may be incomplete or incorrect — always verify against the generated SPARQL above.</p>
   </div>
 
   </div>
@@ -275,6 +273,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260222j"></script>
+<script src="app.js?v=20260222k"></script>
 </body>
 </html>
