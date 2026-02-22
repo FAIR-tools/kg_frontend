@@ -100,10 +100,17 @@ function openStructureViewer(sampleId, name) {
   window.open(url, "_blank", "noopener");
 }
 
+const _ATOM_LEVEL_KEYS = new Set([
+  "atoms", "positions", "species", "atom_species", "elements",
+  "forces", "velocities", "charges", "masses", "tags",
+  "magnetic_moments", "momenta", "numbers",
+]);
+
 function renderDetailGrid(obj, prefix = "") {
   let cells = "";
   for (const [k, v] of Object.entries(obj)) {
     if (v === null || v === undefined) continue;
+    if (_ATOM_LEVEL_KEYS.has(k.toLowerCase())) continue;
     const label = (prefix ? `${prefix}.` : "") + k;
     if (typeof v === "object" && !Array.isArray(v)) {
       cells += renderDetailGrid(v, label);

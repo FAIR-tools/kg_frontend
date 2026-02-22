@@ -3,13 +3,87 @@ from app.graph_state import get_kg
 
 router = APIRouter(prefix="/api/samples", tags=["samples"])
 
+# Fields that contain per-atom arrays — too large and not useful in the detail panel
+_ATOM_LEVEL_KEYS = {
+    "atoms", "positions", "species", "atom_species", "elements",
+    "forces", "velocities", "charges", "masses", "tags",
+    "magnetic_moments", "momenta", "numbers",
+}
+
 
 def _uri_to_str(val):
     """Convert rdflib URIRef / Literal to plain Python string."""
+    if val is None:
+        return None
     try:
         return val.toPython()
     except Exception:
         return str(val)
+
+
+def _safe_serialize(obj, depth=0):
+    """Recursively convert an arbitrary object to a JSON-safe value."""
+    if obj is None:
+        return None
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, (int, float, str)):
+        return obj
+    # rdflib types
+    try:
+        from rdflib import URIRef, Literal
+        if isinstance(obj, (URIRef, Literal)):
+            try:
+                return obj.toPython()
+            except Exception:
+                return str(obj)
+    except ImportError:
+        pass
+    # numpy scalars / arrays
+    try:
+        import numpy as np
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+    except ImportError:
+        pass
+    # pydantic models
+    try:
+        from pydantic import BaseModel
+        if isinstance(obj, BaseModel):
+            return _safe_serialize(obj.model_dump(), depth)
+    except ImportError:
+        pass
+    # dicts
+    if isinstance(obj, dict):
+        result = {}
+        for k, v in obj.items():
+            if v is None:
+                continue
+            if str(k).lower() in _ATOM_LEVEL_KEYS:
+                continue
+            serialized = _safe_serialize(v, depth + 1)
+            if serialized is not None:
+                result[str(k)] = serialized
+        return result or None
+    # lists / tuples — only keep if short or depth is shallow
+    if isinstance(obj, (list, tuple)):
+        items = [_safe_serialize(i, depth + 1) for i in obj]
+        items = [i for i in items if i is not None]
+        if not items:
+            return None
+        # Drop large flat lists of numbers (atom-level)
+        if depth > 0 and len(items) > 50 and all(isinstance(i, (int, float)) for i in items):
+            return f"[{len(items)} values]"
+        return items
+    # fallback
+    try:
+        return str(obj)
+    except Exception:
+        return None
 
 
 @router.get("")
@@ -65,20 +139,35 @@ def get_sample(sample_id: str):
     sample_id = unquote(sample_id)
     kg = get_kg()
 
-    # Find the matching URIRef
     from rdflib import URIRef
     sample_uri = URIRef(sample_id)
 
+    sample = None
+    deserialize_error = None
     try:
         sample = kg.get_sample_as_structure(sample_uri)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        deserialize_error = str(exc)
 
-    if sample is None:
-        raise HTTPException(status_code=404, detail="Sample not found")
+    if sample is not None:
+        try:
+            raw = sample.model_dump()
+        except Exception:
+            raw = vars(sample) if hasattr(sample, "__dict__") else {}
+        result = _safe_serialize(raw)
+        if result:
+            return result
 
-    # sample is an AtomicScaleSample pydantic model — serialize it
+    # Fallback: return whatever basic triples the KG has for this URI
+    fallback: dict = {"id": sample_id}
+    if deserialize_error:
+        fallback["_warning"] = f"Partial data only: {deserialize_error}"
     try:
-        return sample.model_dump(mode="json")
+        for p, o in kg.graph.predicate_objects(sample_uri):
+            key = str(p).split("/")[-1].split("#")[-1]
+            val = _uri_to_str(o) if o is not None else None
+            if val is not None and key not in _ATOM_LEVEL_KEYS:
+                fallback[key] = val
     except Exception:
-        return {"id": sample_id, "error": "Could not serialize sample"}
+        pass
+    return fallback
