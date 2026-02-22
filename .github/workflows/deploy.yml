@@ -3,6 +3,13 @@ name: Deploy Frontend
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "environment.yml"
+      - "Dockerfile.base"
+  workflow_run:
+    workflows: ["Build Base Image"]
+    types: [completed]
+    branches: [main]
 
 jobs:
   deploy:
