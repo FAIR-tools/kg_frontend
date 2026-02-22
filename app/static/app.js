@@ -387,25 +387,34 @@ async function submitUpload() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
 
-    status.innerHTML = alertHtml("success", `✓ <strong>${escHtml(data.filename)}</strong> uploaded (${(data.bytes/1024).toFixed(1)} KB). Rebuilding knowledge graph…`);
+    const startTime = Date.now();
+    const tickerId = setInterval(() => {
+      const secs = Math.floor((Date.now() - startTime) / 1000);
+      status.innerHTML = `<div style="padding:8px 12px;border-left:3px solid var(--accent,#4caf50);background:var(--surface2);border-radius:4px;font-size:0.88rem;display:flex;align-items:center;gap:10px"><div class="spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0"></div><span>Rebuilding knowledge graph… <span style="opacity:0.6">${secs}s</span></span></div>`;
+    }, 1000);
+
     fileInput.value = "";
 
-    // Poll rebuild status
+    // Poll rebuild status every 5s
     let polls = 0;
     const poll = setInterval(async () => {
       try {
         const st = await fetch(`${API}/api/upload/status`, { headers: { "X-Upload-Token": token } }).then(r => r.json());
         if (st.status === "done") {
           clearInterval(poll);
+          clearInterval(tickerId);
           const errs = st.errors?.length ? ` (${st.errors.length} file(s) had parse errors)` : "";
-          status.innerHTML = alertHtml("success", `✓ Done — ${st.samples} sample(s) in graph${errs}.`);
+          const secs = Math.floor((Date.now() - startTime) / 1000);
+          status.innerHTML = alertHtml("success", `✓ Done in ${secs}s — <strong>${st.samples}</strong> sample(s) in graph${errs}.`);
           _loadSampleCount();
         } else if (st.status?.startsWith("error")) {
           clearInterval(poll);
+          clearInterval(tickerId);
           status.innerHTML = alertHtml("error", `Rebuild error: ${escHtml(st.status)}`);
         } else if (++polls > 60) {
           clearInterval(poll);
-          status.innerHTML = alertHtml("warn", "Rebuild is taking a while — check back in a moment.");
+          clearInterval(tickerId);
+          status.innerHTML = alertHtml("warn", "Rebuild is taking longer than expected — refresh the page to check sample count.");
         }
       } catch(_) {}
     }, 5000);
