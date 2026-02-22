@@ -566,19 +566,25 @@ async function loadWorkflows() {
     if (!wfs.length) { showEl("workflows-empty"); return; }
 
     const thead = `<thead><tr>
-      <th>ID</th><th>Type</th><th>Software / DOI</th><th>Potential</th><th>Linked Samples</th>
+      <th>ID</th><th>Type</th><th>Method</th><th>Software / DOI</th><th>Potential</th><th>Output Samples</th>
     </tr></thead>`;
     const tbody = wfs.map(w => {
-      const id    = escHtml(w.id);
+      const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${escHtml(w.id)}</span>`;
       const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
+      const method = w.method ? escHtml(w.method) : '—';
       const sw    = w.software
         ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
         : '—';
       const pot   = escHtml(w.potential || '—');
-      const sLinks = w.samples.length
-        ? w.samples.map(s => `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(s.split(':').pop().slice(0,8))}</button>`).join(" ")
+      // output_samples linked via PROV.wasGeneratedBy
+      const samples = w.output_samples || w.samples || [];
+      const sLinks = samples.length
+        ? samples.map(s => {
+            const short = s.split(':').pop().slice(0, 8);
+            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
+          }).join(" ")
         : '—';
-      return `<tr><td title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${id}</td><td>${badge}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
+      return `<tr><td>${id}</td><td>${badge}</td><td>${method}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
     }).join("");
 
     const wrap = document.getElementById("workflows-table-wrap");

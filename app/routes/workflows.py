@@ -1,119 +1,137 @@
 """
 /api/workflows — lists all computational simulation workflows in the knowledge graph.
 
-Workflow types collected:
-  asmo:EnergyCalculation
-  asmo:MolecularStatics
-  asmo:MolecularDynamics
+Workflow types (as written by atomRDF Simulation.to_graph):
+  asmo:EnergyCalculation  — MolecularStatics, MolecularDynamics, DensityFunctionalTheory
+  asmo:Simulation         — TensileTest, CompressionTest, and other generic simulations
+
+Instead of SPARQL, all lookups use the atomRDF KnowledgeGraph triple API
+(kg.graph.triples / kg.graph.value) which hits the rdflib index directly and is
+significantly faster than SPARQL when the workflow or sample URI is already known.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from urllib.parse import unquote
+from rdflib import URIRef, RDF, RDFS
+
 from app.graph_state import get_kg
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
-ASMO = "http://purls.helmholtz-metadaten.de/asmo/"
+# ── namespace constants (plain URIRef — no SPARQL overhead) ───────────────────
+_ASMO         = "http://purls.helmholtz-metadaten.de/asmo/"
+_PROV         = "http://www.w3.org/ns/prov#"
+_CMSO         = "http://purls.helmholtz-metadaten.de/cmso/"
+
+_ENERGY_CALC  = URIRef(f"{_ASMO}EnergyCalculation")
+_SIMULATION   = URIRef(f"{_ASMO}Simulation")
+
+_PROV_ASSOC   = URIRef(f"{_PROV}wasAssociatedWith")
+_PROV_GEN_BY  = URIRef(f"{_PROV}wasGeneratedBy")
+_PROV_DERIVED = URIRef(f"{_PROV}wasDerivedFrom")
+
+_ASMO_POT     = URIRef(f"{_ASMO}hasInteratomicPotential")
+_ASMO_METHOD  = URIRef(f"{_ASMO}hasComputationalMethod")
+_CMSO_PATH    = URIRef(f"{_CMSO}hasPath")
 
 _WORKFLOW_TYPES = {
-    f"{ASMO}EnergyCalculation": "Energy Calculation",
-    f"{ASMO}MolecularStatics":  "Molecular Statics",
-    f"{ASMO}MolecularDynamics": "Molecular Dynamics",
+    str(_ENERGY_CALC): "Energy Calculation",
+    str(_SIMULATION):  "Simulation",
 }
-
-_SPARQL = """
-SELECT DISTINCT ?wf ?wfType ?software ?potential
-WHERE {
-  ?wf a ?wfType .
-  FILTER(?wfType IN (
-    <http://purls.helmholtz-metadaten.de/asmo/EnergyCalculation>,
-    <http://purls.helmholtz-metadaten.de/asmo/MolecularStatics>,
-    <http://purls.helmholtz-metadaten.de/asmo/MolecularDynamics>
-  ))
-  OPTIONAL {
-    ?wf <http://www.w3.org/ns/prov#wasAssociatedWith> ?software .
-    FILTER(STRSTARTS(STR(?software), "http"))
-    FILTER(!STRSTARTS(STR(?software), "software:"))
-  }
-  OPTIONAL {
-    ?wf <http://purls.helmholtz-metadaten.de/asmo/hasInteratomicPotential> ?pot .
-    ?pot <http://www.w3.org/2000/01/rdf-schema#label> ?potential .
-  }
-}
-"""
-
-_SAMPLE_SPARQL = """
-SELECT DISTINCT ?wf ?sample
-WHERE {
-  ?wf a ?wfType .
-  FILTER(?wfType IN (
-    <http://purls.helmholtz-metadaten.de/asmo/EnergyCalculation>,
-    <http://purls.helmholtz-metadaten.de/asmo/MolecularStatics>,
-    <http://purls.helmholtz-metadaten.de/asmo/MolecularDynamics>
-  ))
-  ?sample <http://purls.helmholtz-metadaten.de/asmo/wasCalculatedBy> ?wf .
-  ?sample a <http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample> .
-}
-"""
 
 
 def _local(uri: str) -> str:
-    if "#" in uri:
-        return uri.split("#")[-1]
-    return uri.rstrip("/").split("/")[-1]
+    """Extract the local name from a URI (last path segment or fragment)."""
+    return uri.rstrip("/").split("/")[-1].split("#")[-1]
+
+
+def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
+    """
+    Build a workflow record from the KG using direct triple lookups (no SPARQL).
+
+    Mirrors the pattern used inside atomRDF's Simulation.from_graph() but reads
+    into a plain dict so it is thread-safe for concurrent ASGI requests.
+    """
+    # Software: PROV.wasAssociatedWith objects that are plain HTTP URIs (DOIs)
+    software_uris = [
+        str(o)
+        for _, _, o in g.triples((wf_uri, _PROV_ASSOC, None))
+        if str(o).startswith("http")
+    ]
+    software = software_uris[0] if software_uris else ""
+
+    # Interatomic potential label
+    pot_node = g.value(wf_uri, _ASMO_POT)
+    potential = ""
+    if pot_node:
+        pot_label = g.value(pot_node, RDFS.label)
+        potential = str(pot_label) if pot_label else _local(str(pot_node))
+
+    # Computational method sub-type (e.g. MolecularDynamics, DensityFunctionalTheory)
+    method_node = g.value(wf_uri, _ASMO_METHOD)
+    method = _local(str(method_node)) if method_node else ""
+
+    # Output samples: sample_uri  PROV.wasGeneratedBy  workflow_uri
+    output_samples = [str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))]
+
+    # Input samples: output samples that were PROV.wasDerivedFrom something
+    input_set: set[str] = set()
+    for out_s in output_samples:
+        for _, _, in_s in g.triples((URIRef(out_s), _PROV_DERIVED, None)):
+            input_set.add(str(in_s))
+    input_samples = sorted(input_set)
+
+    # Filesystem / archive path
+    path_lit = g.value(wf_uri, _CMSO_PATH)
+    path = str(path_lit) if path_lit else ""
+
+    return {
+        "id":             str(wf_uri),
+        "type":           type_name,
+        "type_uri":       type_uri,
+        "method":         method,
+        "software":       software,
+        "potential":      potential,
+        "path":           path,
+        "input_samples":  input_samples,
+        "output_samples": output_samples,
+        # "samples" kept for backward-compat with the JS View-button logic
+        "samples":        output_samples,
+    }
 
 
 @router.get("")
 def list_workflows():
-    """Return all workflow instances with key metadata."""
+    """Return all workflow instances with metadata using direct triple lookups."""
     kg = get_kg()
+    g  = kg.graph  # rdflib ConjunctiveGraph
 
-    # Main workflow query
-    try:
-        df = kg.query(_SPARQL)
-    except Exception as exc:
-        return {"error": str(exc), "workflows": []}
+    records: list[dict] = []
+    for type_ref, type_label in (
+        (_ENERGY_CALC, "Energy Calculation"),
+        (_SIMULATION,  "Simulation"),
+    ):
+        for wf_uri, _, _ in g.triples((None, RDF.type, type_ref)):
+            records.append(_build_record(g, wf_uri, type_label, str(type_ref)))
 
-    if df is None or df.empty:
-        return {"workflows": []}
+    records.sort(key=lambda r: r["id"])
+    return {"workflows": records, "total": len(records)}
 
-    # Collect per-workflow info (deduplicate by wf URI)
-    wf_map: dict[str, dict] = {}
-    for _, row in df.iterrows():
-        wf_id  = str(row.get("wf", ""))
-        wf_type = str(row.get("wfType", ""))
-        software = str(row.get("software", ""))
-        potential = str(row.get("potential", ""))
 
-        if not wf_id:
-            continue
+@router.get("/{workflow_id:path}")
+def get_workflow(workflow_id: str):
+    """
+    Return detailed info for a single workflow by ID.
 
-        if wf_id not in wf_map:
-            wf_map[wf_id] = {
-                "id":        wf_id,
-                "type":      _WORKFLOW_TYPES.get(wf_type, _local(wf_type)),
-                "type_uri":  wf_type,
-                "software":  software if software and software != "None" else "",
-                "potential": potential if potential and potential != "None" else "",
-                "samples":   [],
-            }
-        else:
-            # Merge additional software/potential hits
-            entry = wf_map[wf_id]
-            if software and software != "None" and software not in entry["software"]:
-                entry["software"] = software
-            if potential and potential != "None" and not entry["potential"]:
-                entry["potential"] = potential
+    Uses direct triple lookups equivalent to Simulation.from_graph() but
+    without mutating class-level state (which is not safe in concurrent ASGI).
+    """
+    workflow_id = unquote(workflow_id)
+    kg  = get_kg()
+    g   = kg.graph
+    wf_uri = URIRef(workflow_id)
 
-    # Resolve linked AtomicScaleSamples
-    try:
-        sdf = kg.query(_SAMPLE_SPARQL)
-        if sdf is not None and not sdf.empty:
-            for _, row in sdf.iterrows():
-                wf_id  = str(row.get("wf", ""))
-                sample = str(row.get("sample", ""))
-                if wf_id in wf_map and sample and sample not in wf_map[wf_id]["samples"]:
-                    wf_map[wf_id]["samples"].append(sample)
-    except Exception:
-        pass
+    wf_type = g.value(wf_uri, RDF.type)
+    if wf_type is None or str(wf_type) not in _WORKFLOW_TYPES:
+        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
 
-    workflows = sorted(wf_map.values(), key=lambda w: w["id"])
-    return {"workflows": workflows, "total": len(workflows)}
+    return _build_record(g, wf_uri, _WORKFLOW_TYPES[str(wf_type)], str(wf_type))
