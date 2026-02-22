@@ -311,7 +311,7 @@ async function loadGraph() {
           openGraphSampleDetail(node.id, node.label);
         }
       })
-      .cooldownTime(6000)
+      .cooldownTime(2000)
       .graphData(data);
 
     // Prevent the ForceGraph canvas from swallowing wheel events and locking
@@ -671,4 +671,4 @@ try {
 
 // ── Init ──────────────────────────────────────────────────
 _loadSampleCount();
-loadGraph();
+// loadGraph is lazy — fires on first click of the Graph tab

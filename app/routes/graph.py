@@ -6,12 +6,21 @@ Links: all URI→URI predicates (rdf:type, owl:* and rdfs:* predicates excluded)
 Samples are given type "sample" so the frontend can render them prominently.
 """
 
+import os
+from collections import defaultdict
 from fastapi import APIRouter
-from app.graph_state import get_kg
+from rdflib import RDF, URIRef
+from rdflib.term import Literal
+from app.graph_state import get_kg, _DB_PATH
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
 SAMPLE_TYPE = "http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample"
+_SAMPLE_URI  = URIRef(SAMPLE_TYPE)
+
+# ── In-memory cache, invalidated whenever graph.db is updated ────────────────
+_graph_cache: dict | None = None
+_graph_cache_mtime: float = -1.0
 
 # Predicates to skip (they clutter the graph without adding meaning)
 _SKIP_PREFIXES = (
@@ -56,19 +65,28 @@ def _skip_pred(pred: str) -> bool:
 @router.get("")
 def get_graph():
     """Return graph data as {nodes, links} for the force-directed visualiser."""
-    kg = get_kg()
+    global _graph_cache, _graph_cache_mtime
 
-    # ── 1. Collect sample URIs ────────────────────────────────────────────────
+    # ── Serve from cache if graph.db hasn't changed ───────────────────────────
+    try:
+        mtime = os.path.getmtime(_DB_PATH)
+    except OSError:
+        mtime = -1.0
+    if _graph_cache is not None and mtime == _graph_cache_mtime:
+        return _graph_cache
+
+    kg = get_kg()
+    g  = kg.graph  # rdflib ConjunctiveGraph / SQLAlchemy store
+
+    # ── 1. Collect sample URIs (direct triple index, no SPARQL overhead) ──────
     sample_uris: set[str] = set()
     try:
-        df = kg.query(f"SELECT DISTINCT ?s WHERE {{ ?s a <{SAMPLE_TYPE}> . }}")
-        if df is not None and "s" in df.columns:
-            for val in df["s"]:
-                sample_uris.add(str(val))
+        for s, _, _ in g.triples((None, RDF.type, _SAMPLE_URI)):
+            if s is not None:
+                sample_uris.add(str(s))
     except Exception:
         pass
-    # Fallback to KG attribute
-    try:
+    try:                                        # fallback KG attribute
         for uri in kg.sample_ids:
             sample_uris.add(str(uri))
     except Exception:
@@ -82,40 +100,35 @@ def get_graph():
     except Exception:
         pass
 
-    # ── 3. Query all URI→URI triples ─────────────────────────────────────────
-    sparql = """
-    SELECT DISTINCT ?s ?p ?o WHERE {
-        ?s ?p ?o .
-        FILTER(!isLiteral(?s) && !isLiteral(?o))
-    }
-    LIMIT 1500
-    """
-
+    # ── 3. Walk all URI→URI triples (direct iteration, cap at 2000) ──────────
+    LIMIT = 2000
+    count = 0
     nodes_map: dict[str, dict] = {}
     links: list[dict] = []
 
     try:
-        df = kg.query(sparql)
-        if df is not None and len(df):
-            for _, row in df.iterrows():
-                s = str(row["s"])
-                p = str(row["p"])
-                o = str(row["o"])
-
-                if _skip_pred(p):
-                    continue
-
-                for uri in (s, o):
-                    if uri not in nodes_map:
-                        is_sample = uri in sample_uris
-                        nodes_map[uri] = {
-                            "id": uri,
-                            "label": sample_labels.get(uri, _local(uri)) if is_sample else _local(uri),
-                            "type": "sample" if is_sample else _group(uri),
-                            "group": "sample" if is_sample else _group(uri),
-                        }
-
-                links.append({"source": s, "target": o, "label": _local(p)})
+        for s, p, o in g.triples((None, None, None)):
+            if s is None or p is None or o is None:
+                continue
+            if isinstance(s, Literal) or isinstance(o, Literal):
+                continue
+            ps = str(p)
+            if _skip_pred(ps):
+                continue
+            ss, os_ = str(s), str(o)
+            for uri in (ss, os_):
+                if uri not in nodes_map:
+                    is_sample = uri in sample_uris
+                    nodes_map[uri] = {
+                        "id": uri,
+                        "label": sample_labels.get(uri, _local(uri)) if is_sample else _local(uri),
+                        "type": "sample" if is_sample else _group(uri),
+                        "group": "sample" if is_sample else _group(uri),
+                    }
+            links.append({"source": ss, "target": os_, "label": _local(ps)})
+            count += 1
+            if count >= LIMIT:
+                break
     except Exception as e:
         return {"nodes": [], "links": [], "error": str(e)}
 
@@ -135,7 +148,6 @@ def get_graph():
             nodes_map[uri]["group"] = "sample"
 
     # ── 5. Compute degree (connection count) for each node ─────────────────
-    from collections import defaultdict
     degree_count: dict[str, int] = defaultdict(int)
     for link in links:
         degree_count[link["source"]] += 1
@@ -143,4 +155,7 @@ def get_graph():
     for uri, node in nodes_map.items():
         node["degree"] = degree_count.get(uri, 0)
 
-    return {"nodes": list(nodes_map.values()), "links": links}
+    result = {"nodes": list(nodes_map.values()), "links": links}
+    _graph_cache = result
+    _graph_cache_mtime = mtime
+    return result
