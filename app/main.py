@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from app.routes import sparql, guided, ontology, samples, export, admin, graph, nlq, workflows, upload
+from app.routes import sparql, guided, ontology, samples, export, admin, graph, nlq, workflows, upload, properties
 
 app = FastAPI(
     title="AtomRDF Knowledge Graph",
@@ -30,6 +30,7 @@ app.include_router(graph.router)
 app.include_router(nlq.router)
 app.include_router(workflows.router)
 app.include_router(upload.router)
+app.include_router(properties.router)
 
 # Crystal Toolkit structure viewer (Dash WSGI sub-app) — loaded lazily
 # so the app still starts if crystal-toolkit isn't installed yet.

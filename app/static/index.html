@@ -21,6 +21,9 @@
     <div class="stat-chip">
       Workflows: <strong id="hdr-workflow-count">—</strong>
     </div>
+    <div class="stat-chip">
+      Properties: <strong id="hdr-prop-count">—</strong>
+    </div>
     <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light/dark mode" onclick="toggleTheme()">🌙</button>
   </div>
 </header>
@@ -29,6 +32,7 @@
   <button class="active" data-tab="graph">Graph</button>
   <button data-tab="samples">Samples</button>
   <button data-tab="workflows">Workflows</button>
+  <button data-tab="properties">Properties</button>
   <button data-tab="query">Query</button>
   <button data-tab="export">Export</button>
 </nav>
@@ -105,6 +109,35 @@
       <div id="workflows-empty" class="empty" style="display:none">
         <div class="icon">⚙️</div>
         <p>No workflows found in the knowledge graph.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────── PROPERTIES TAB ───────────── -->
+  <div class="tab-panel" id="tab-properties">
+    <div class="panel-header">
+      <h2>Calculated Properties</h2>
+      <p>Scalar and array properties computed by simulation workflows in the knowledge graph.</p>
+    </div>
+    <div id="properties-alert"></div>
+    <div class="card" style="margin-bottom:12px;padding:10px 16px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="prop-filter" placeholder="Filter by type or label…"
+          oninput="filterProperties()"
+          style="flex:1;min-width:180px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:13px" />
+        <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="prop-show-arrays" onchange="filterProperties()" />
+          Show array properties
+        </label>
+        <span id="prop-result-count" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+    </div>
+    <div class="card" id="properties-card">
+      <div id="properties-loading" class="empty"><div class="spinner"></div></div>
+      <div id="properties-table-wrap" style="display:none"></div>
+      <div id="properties-empty" class="empty" style="display:none">
+        <div class="icon">📐</div>
+        <p>No calculated properties found in the knowledge graph.</p>
       </div>
     </div>
   </div>
@@ -273,6 +306,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260223c"></script>
+<script src="app.js?v=20260223d"></script>
 </body>
 </html>

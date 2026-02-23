@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.graph_state import get_kg
+from app.cache import read_cache
 
 router = APIRouter(prefix="/api/samples", tags=["samples"])
 
@@ -88,7 +89,11 @@ def _safe_serialize(obj, depth=0):
 
 @router.get("")
 def list_samples():
-    """Return a list of all samples in the graph."""
+    """Return a list of all samples in the graph. Served from cache when available."""
+    cached = read_cache("samples.json")
+    if cached is not None:
+        return cached
+
     kg = get_kg()
     ids = kg.sample_ids          # list of URIRef
     names = kg.sample_names      # list of str | None

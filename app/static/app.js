@@ -12,9 +12,10 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${tab}`).classList.add("active");
-    if (tab === "samples")   loadSamples();
-    if (tab === "graph")     loadGraph();
-    if (tab === "workflows") loadWorkflows();
+    if (tab === "samples")    loadSamples();
+    if (tab === "graph")      loadGraph();
+    if (tab === "workflows")  loadWorkflows();
+    if (tab === "properties") loadProperties();
   });
 });
 
@@ -601,6 +602,107 @@ async function loadWorkflows() {
     const retryMsg = e.message.startsWith("HTTP 5") ? " The app may still be starting — please try again in a moment." : "";
     showAlert("workflows-alert", "error", `Failed to load workflows: ${e.message}.${retryMsg}`);
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROPERTIES
+// ═══════════════════════════════════════════════════════════
+let _propertiesCache = [];
+let _propertiesLoaded = false;
+
+async function loadProperties() {
+  if (_propertiesLoaded) return;
+  _propertiesLoaded = true;
+  showEl("properties-loading");
+  hideEl("properties-table-wrap");
+  hideEl("properties-empty");
+  clearAlert("properties-alert");
+
+  try {
+    const data = await apiFetch("/api/properties");
+    _propertiesCache = data;
+    hideEl("properties-loading");
+
+    const scalarCount = data.filter(p => !p.value_is_array).length;
+    const countEl = document.getElementById("hdr-prop-count");
+    if (countEl) countEl.textContent = scalarCount;
+    document.getElementById("prop-result-count").textContent = `${scalarCount} scalar, ${data.length - scalarCount} array`;
+
+    if (!data.length) { showEl("properties-empty"); return; }
+    renderPropertiesTable(data);
+  } catch (e) {
+    _propertiesLoaded = false;
+    hideEl("properties-loading");
+    const retryMsg = e.message.startsWith("HTTP 5") ? " The app may still be starting — please try again in a moment." : "";
+    showAlert("properties-alert", "error", `Failed to load properties: ${e.message}.${retryMsg}`);
+  }
+}
+
+function renderPropertiesTable(data) {
+  const showArrays = document.getElementById("prop-show-arrays")?.checked ?? false;
+  const filter     = (document.getElementById("prop-filter")?.value ?? "").trim().toLowerCase();
+
+  const filtered = data.filter(p => {
+    if (!showArrays && p.value_is_array) return false;
+    if (filter) {
+      const hay = (p.type + " " + p.label).toLowerCase();
+      if (!hay.includes(filter)) return false;
+    }
+    return true;
+  });
+
+  const countEl = document.getElementById("prop-result-count");
+  if (countEl) countEl.textContent = `${filtered.length} shown`;
+
+  if (!filtered.length) {
+    const wrap = document.getElementById("properties-table-wrap");
+    wrap.innerHTML = `<div class="empty" style="padding:24px"><p>No properties match your filter.</p></div>`;
+    showEl("properties-table-wrap");
+    return;
+  }
+
+  const thead = `<thead><tr>
+    <th>Type</th><th>Label</th><th style="text-align:right">Value</th><th>Unit</th><th>Sample(s)</th>
+  </tr></thead>`;
+
+  const tbody = filtered.map(p => {
+    const type  = escHtml(p.type);
+    const label = escHtml(p.label || p.type);
+
+    let valCell;
+    if (p.value_is_array) {
+      valCell = `<span style="color:var(--text-muted);font-size:11px">[array]</span>`;
+    } else if (p.value !== null && p.value !== undefined) {
+      const fmt = typeof p.value === "number" ? p.value.toPrecision(6) : escHtml(String(p.value));
+      valCell = `<span style="font-family:var(--mono);font-size:12px">${escHtml(fmt)}</span>`;
+    } else {
+      valCell = `—`;
+    }
+
+    const unit = p.unit
+      ? (p.unit_uri
+          ? `<a href="${escAttr(p.unit_uri)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(p.unit)}</a>`
+          : `<span style="font-size:11px">${escHtml(p.unit)}</span>`)
+      : `—`;
+
+    const samples = p.sample_ids || [];
+    const sLinks = samples.length
+      ? samples.slice(0, 3).map(s => {
+          const short = s.split(":").pop().slice(0, 8);
+          return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
+        }).join(" ") + (samples.length > 3 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 3} more</span>` : "")
+      : `—`;
+
+    return `<tr><td><span class="workflow-type-badge">${type}</span></td><td>${label}</td><td style="text-align:right">${valCell}</td><td>${unit}</td><td>${sLinks}</td></tr>`;
+  }).join("");
+
+  const wrap = document.getElementById("properties-table-wrap");
+  wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
+  showEl("properties-table-wrap");
+}
+
+function filterProperties() {
+  if (_propertiesCache.length) renderPropertiesTable(_propertiesCache);
 }
 
 // ═══════════════════════════════════════════════════════════

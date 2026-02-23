@@ -14,6 +14,7 @@ from urllib.parse import unquote
 from rdflib import URIRef, RDF, RDFS
 
 from app.graph_state import get_kg
+from app.cache import read_cache
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -132,7 +133,11 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
 
 @router.get("")
 def list_workflows():
-    """Return all workflow instances with metadata using direct triple lookups."""
+    """Return all workflow instances with metadata. Served from cache when available."""
+    cached = read_cache("workflows.json")
+    if cached is not None:
+        return cached
+
     kg = get_kg()
     g  = kg.graph  # rdflib ConjunctiveGraph
 
