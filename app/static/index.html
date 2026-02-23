@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260224a" />
 </head>
 <body>
 
@@ -73,17 +73,39 @@
   <div class="tab-panel" id="tab-samples">
     <div class="panel-header">
       <h2>Samples</h2>
-      <p>All computational samples in the knowledge graph. Click a row to inspect details.</p>
+      <p>Browse samples by composition. Click elements to filter, Ctrl+click to add to selection.</p>
     </div>
     <div id="samples-alert"></div>
+
+    <!-- Search / selection bar -->
+    <div class="card" style="margin-bottom:10px;padding:10px 16px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="elem-text-filter"
+          placeholder="Search by element symbol or sample name…"
+          oninput="filterSamples()"
+          style="flex:1;min-width:180px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px" />
+        <div id="elem-selection-chips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        <button class="btn btn-sm btn-outline" onclick="clearElemSelection()" id="elem-clear-btn" style="display:none">✕ Clear</button>
+        <span id="samples-result-count" style="font-size:12px;color:var(--text-muted);white-space:nowrap"></span>
+      </div>
+    </div>
+
+    <!-- Periodic table -->
+    <div class="card" id="ptable-card" style="margin-bottom:10px;padding:14px 16px 10px">
+      <div id="ptable-loading" class="empty"><div class="spinner"></div></div>
+      <div id="ptable-wrap" style="display:none"></div>
+    </div>
+
+    <!-- Filtered samples list -->
     <div class="card" id="samples-card">
       <div id="samples-loading" class="empty"><div class="spinner"></div></div>
       <div id="samples-table-wrap" style="display:none"></div>
       <div id="samples-empty" class="empty" style="display:none">
         <div class="icon">🔬</div>
-        <p>No samples yet. Add YAML files to the <code>kg_data</code> repository.</p>
+        <p>No samples match the current filter.</p>
       </div>
     </div>
+
     <div class="detail-panel" id="sample-detail">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <h3 id="detail-title">Sample detail</h3>
@@ -306,6 +328,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260223d"></script>
+<script src="app.js?v=20260224a"></script>
 </body>
 </html>

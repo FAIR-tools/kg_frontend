@@ -99,10 +99,49 @@ def list_samples():
     names = kg.sample_names      # list of str | None
 
     result = []
+    from rdflib import URIRef as _URIRef
+    _CMSO_NS = "http://purls.helmholtz-metadaten.de/cmso/"
+    _HAS_SPECIES   = _URIRef(f"{_CMSO_NS}hasSpecies")
+    _HAS_ELEMENT   = _URIRef(f"{_CMSO_NS}hasElement")
+    _HAS_SYM       = _URIRef(f"{_CMSO_NS}hasChemicalSymbol")
+    _HAS_ELEM_RATIO = _URIRef(f"{_CMSO_NS}hasElementRatio")
+
+    def _element_ratio(sample_uri):
+        er = {}
+        species = kg.graph.value(sample_uri, _HAS_SPECIES)
+        if species is not None:
+            for _, _, element in kg.graph.triples((species, _HAS_ELEMENT, None)):
+                sym   = kg.graph.value(element, _HAS_SYM)
+                ratio = kg.graph.value(element, _HAS_ELEM_RATIO)
+                if sym is not None:
+                    try:
+                        er[str(sym)] = float(ratio) if ratio is not None else 1.0
+                    except (ValueError, TypeError):
+                        er[str(sym)] = 1.0
+        return er
+
+    def _formula(er):
+        if not er:
+            return "?"
+        parts = []
+        for el in sorted(er.keys()):
+            r = er[el]
+            if abs(r - 1.0) < 0.001:
+                parts.append(el)
+            else:
+                r_str = f"{r:.3f}".rstrip("0").rstrip(".")
+                parts.append(f"{el}{r_str}")
+        return "".join(parts)
+
     for sid, sname in zip(ids, names):
+        uri = sid if hasattr(sid, "toPython") else _URIRef(str(sid))
+        er = _element_ratio(uri)
         result.append({
-            "id": _uri_to_str(sid),
-            "name": sname or "",
+            "id":            _uri_to_str(sid),
+            "name":          sname or "",
+            "elements":      sorted(er.keys()),
+            "element_ratio": er,
+            "formula":       _formula(er),
         })
     return result
 

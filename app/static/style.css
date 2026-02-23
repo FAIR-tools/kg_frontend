@@ -475,3 +475,104 @@ footer .sep { opacity: 0.3; }
   padding: 2px 8px;
   white-space: nowrap;
 }
+
+/* ── Periodic Table ───────────────────────────────────── */
+.ptable {
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  grid-template-rows: repeat(10, auto);
+  gap: 3px;
+  width: 100%;
+}
+.pt-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  font-size: 10px;
+  line-height: 1.1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.1s, border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+.pt-cell-sym {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.pt-cell-cnt {
+  font-size: 8px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+/* category colors (background tint) */
+.pt-alkali     { background: rgba(239,83,80,0.12); }
+.pt-alkaline   { background: rgba(255,152,0,0.12); }
+.pt-transition { background: rgba(92,107,192,0.12); }
+.pt-lanthanide { background: rgba(171,71,188,0.12); }
+.pt-actinide   { background: rgba(38,166,154,0.12); }
+.pt-post-trans { background: rgba(100,181,246,0.12); }
+.pt-metalloid  { background: rgba(129,199,132,0.12); }
+.pt-nonmetal   { background: rgba(174,213,129,0.12); }
+.pt-halogen    { background: rgba(77,182,172,0.12); }
+.pt-noble      { background: rgba(158,158,158,0.10); }
+
+/* elements not found in the KG — strongly dimmed */
+.pt-cell.pt-absent {
+  opacity: 0.22;
+  cursor: default;
+}
+/* elements present in KG — bright, clickable */
+.pt-cell.pt-present {
+  opacity: 1;
+  cursor: pointer;
+  border-color: var(--border);
+}
+.pt-cell.pt-present:hover {
+  transform: scale(1.12);
+  border-color: var(--accent);
+  z-index: 2;
+}
+/* selected element */
+.pt-cell.pt-selected {
+  opacity: 1;
+  cursor: pointer;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  z-index: 3;
+}
+.pt-cell.pt-selected .pt-cell-sym {
+  color: var(--accent-hover);
+}
+/* dimmed after a selection (present but not selected) */
+.pt-cell.pt-dimmed {
+  opacity: 0.35;
+}
+
+/* element selection chips */
+.elem-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(92,107,192,0.18);
+  border: 1px solid rgba(92,107,192,0.4);
+  border-radius: 12px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-hover);
+}
+
+/* formula display in samples table */
+.sample-formula {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}

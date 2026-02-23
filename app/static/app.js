@@ -43,13 +43,91 @@ async function _loadSampleCount() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SAMPLES
+// SAMPLES  —  Periodic Table Explorer
 // ═══════════════════════════════════════════════════════════
 let _samplesCache = [];
+let _selectedElements = new Set();  // elements the user has clicked
+
+// Standard 18-column periodic table positions: [symbol, row, col, category-class]
+// Rows 9-10 = lanthanides / actinides (with a blank row 8 as spacer)
+const _PT_ELEMENTS = [
+  // Period 1
+  ["H",  1, 1,  "pt-nonmetal"],  ["He", 1, 18, "pt-noble"],
+  // Period 2
+  ["Li", 2, 1,  "pt-alkali"],    ["Be", 2, 2,  "pt-alkaline"],
+  ["B",  2, 13, "pt-metalloid"], ["C",  2, 14, "pt-nonmetal"],
+  ["N",  2, 15, "pt-nonmetal"],  ["O",  2, 16, "pt-nonmetal"],
+  ["F",  2, 17, "pt-halogen"],   ["Ne", 2, 18, "pt-noble"],
+  // Period 3
+  ["Na", 3, 1,  "pt-alkali"],    ["Mg", 3, 2,  "pt-alkaline"],
+  ["Al", 3, 13, "pt-post-trans"],["Si", 3, 14, "pt-metalloid"],
+  ["P",  3, 15, "pt-nonmetal"],  ["S",  3, 16, "pt-nonmetal"],
+  ["Cl", 3, 17, "pt-halogen"],   ["Ar", 3, 18, "pt-noble"],
+  // Period 4
+  ["K",  4, 1,  "pt-alkali"],    ["Ca", 4, 2,  "pt-alkaline"],
+  ["Sc", 4, 3,  "pt-transition"],["Ti", 4, 4,  "pt-transition"],
+  ["V",  4, 5,  "pt-transition"],["Cr", 4, 6,  "pt-transition"],
+  ["Mn", 4, 7,  "pt-transition"],["Fe", 4, 8,  "pt-transition"],
+  ["Co", 4, 9,  "pt-transition"],["Ni", 4, 10, "pt-transition"],
+  ["Cu", 4, 11, "pt-transition"],["Zn", 4, 12, "pt-transition"],
+  ["Ga", 4, 13, "pt-post-trans"],["Ge", 4, 14, "pt-metalloid"],
+  ["As", 4, 15, "pt-metalloid"], ["Se", 4, 16, "pt-nonmetal"],
+  ["Br", 4, 17, "pt-halogen"],   ["Kr", 4, 18, "pt-noble"],
+  // Period 5
+  ["Rb", 5, 1,  "pt-alkali"],    ["Sr", 5, 2,  "pt-alkaline"],
+  ["Y",  5, 3,  "pt-transition"],["Zr", 5, 4,  "pt-transition"],
+  ["Nb", 5, 5,  "pt-transition"],["Mo", 5, 6,  "pt-transition"],
+  ["Tc", 5, 7,  "pt-transition"],["Ru", 5, 8,  "pt-transition"],
+  ["Rh", 5, 9,  "pt-transition"],["Pd", 5, 10, "pt-transition"],
+  ["Ag", 5, 11, "pt-transition"],["Cd", 5, 12, "pt-transition"],
+  ["In", 5, 13, "pt-post-trans"],["Sn", 5, 14, "pt-post-trans"],
+  ["Sb", 5, 15, "pt-metalloid"], ["Te", 5, 16, "pt-metalloid"],
+  ["I",  5, 17, "pt-halogen"],   ["Xe", 5, 18, "pt-noble"],
+  // Period 6
+  ["Cs", 6, 1,  "pt-alkali"],    ["Ba", 6, 2,  "pt-alkaline"],
+  ["Hf", 6, 4,  "pt-transition"],["Ta", 6, 5,  "pt-transition"],
+  ["W",  6, 6,  "pt-transition"],["Re", 6, 7,  "pt-transition"],
+  ["Os", 6, 8,  "pt-transition"],["Ir", 6, 9,  "pt-transition"],
+  ["Pt", 6, 10, "pt-transition"],["Au", 6, 11, "pt-transition"],
+  ["Hg", 6, 12, "pt-transition"],["Tl", 6, 13, "pt-post-trans"],
+  ["Pb", 6, 14, "pt-post-trans"],["Bi", 6, 15, "pt-post-trans"],
+  ["Po", 6, 16, "pt-post-trans"],["At", 6, 17, "pt-halogen"],
+  ["Rn", 6, 18, "pt-noble"],
+  // Period 7
+  ["Fr", 7, 1,  "pt-alkali"],    ["Ra", 7, 2,  "pt-alkaline"],
+  ["Rf", 7, 4,  "pt-transition"],["Db", 7, 5,  "pt-transition"],
+  ["Sg", 7, 6,  "pt-transition"],["Bh", 7, 7,  "pt-transition"],
+  ["Hs", 7, 8,  "pt-transition"],["Mt", 7, 9,  "pt-transition"],
+  ["Ds", 7, 10, "pt-transition"],["Rg", 7, 11, "pt-transition"],
+  ["Cn", 7, 12, "pt-transition"],["Nh", 7, 13, "pt-post-trans"],
+  ["Fl", 7, 14, "pt-post-trans"],["Mc", 7, 15, "pt-post-trans"],
+  ["Lv", 7, 16, "pt-post-trans"],["Ts", 7, 17, "pt-halogen"],
+  ["Og", 7, 18, "pt-noble"],
+  // Row 9 — Lanthanides (row 8 is a visual gap)
+  ["La", 9, 3,  "pt-lanthanide"],["Ce", 9, 4,  "pt-lanthanide"],
+  ["Pr", 9, 5,  "pt-lanthanide"],["Nd", 9, 6,  "pt-lanthanide"],
+  ["Pm", 9, 7,  "pt-lanthanide"],["Sm", 9, 8,  "pt-lanthanide"],
+  ["Eu", 9, 9,  "pt-lanthanide"],["Gd", 9, 10, "pt-lanthanide"],
+  ["Tb", 9, 11, "pt-lanthanide"],["Dy", 9, 12, "pt-lanthanide"],
+  ["Ho", 9, 13, "pt-lanthanide"],["Er", 9, 14, "pt-lanthanide"],
+  ["Tm", 9, 15, "pt-lanthanide"],["Yb", 9, 16, "pt-lanthanide"],
+  ["Lu", 9, 17, "pt-lanthanide"],
+  // Row 10 — Actinides
+  ["Ac", 10, 3,  "pt-actinide"], ["Th", 10, 4,  "pt-actinide"],
+  ["Pa", 10, 5,  "pt-actinide"], ["U",  10, 6,  "pt-actinide"],
+  ["Np", 10, 7,  "pt-actinide"], ["Pu", 10, 8,  "pt-actinide"],
+  ["Am", 10, 9,  "pt-actinide"], ["Cm", 10, 10, "pt-actinide"],
+  ["Bk", 10, 11, "pt-actinide"], ["Cf", 10, 12, "pt-actinide"],
+  ["Es", 10, 13, "pt-actinide"], ["Fm", 10, 14, "pt-actinide"],
+  ["Md", 10, 15, "pt-actinide"], ["No", 10, 16, "pt-actinide"],
+  ["Lr", 10, 17, "pt-actinide"],
+];
 
 async function loadSamples() {
   showEl("samples-loading");
+  showEl("ptable-loading");
   hideEl("samples-table-wrap");
+  hideEl("ptable-wrap");
   hideEl("samples-empty");
   clearAlert("samples-alert");
 
@@ -58,29 +136,184 @@ async function loadSamples() {
     _samplesCache = data;
     document.getElementById("hdr-sample-count").textContent = data.length;
     hideEl("samples-loading");
+    hideEl("ptable-loading");
 
     if (!data.length) {
       showEl("samples-empty");
       return;
     }
-    const wrap = document.getElementById("samples-table-wrap");
-    // Build table with action button column manually (escHtml-safe)
-    const thead = `<thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead>`;
-    const tbody = data.map((s, i) => {
-      const name = escHtml(s.name || "—");
-      const shortId = escHtml(s.id.split(':').pop().split('/').pop().slice(0, 8));
-      const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬 View</button>`;
-      return `<tr style="cursor:pointer" data-row="${i}"><td>${name}</td><td><span title="${escAttr(s.id)}" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${shortId}…</span></td><td>${viewBtn}</td></tr>`;
-    }).join("");
-    wrap.innerHTML = `<table><thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead><tbody>${tbody}</tbody></table>`;
-    wrap.querySelectorAll("tr[data-row]").forEach(tr => {
-      tr.addEventListener("click", () => openSampleDetail(data[parseInt(tr.dataset.row, 10)].id, data[parseInt(tr.dataset.row, 10)].name));
-    });
+
+    _renderPeriodicTable();
+    showEl("ptable-wrap");
+    _renderFilteredSamples();
     showEl("samples-table-wrap");
   } catch (e) {
     hideEl("samples-loading");
+    hideEl("ptable-loading");
     showAlert("samples-alert", "error", `Failed to load samples: ${e.message}`);
   }
+}
+
+function _renderPeriodicTable() {
+  // Build element → count map
+  const countMap = {};
+  for (const s of _samplesCache) {
+    for (const el of (s.elements || [])) {
+      countMap[el] = (countMap[el] || 0) + 1;
+    }
+  }
+
+  const wrap = document.getElementById("ptable-wrap");
+  const divs = [];
+  for (const [sym, row, col, cat] of _PT_ELEMENTS) {
+    const cnt = countMap[sym] || 0;
+    const present = cnt > 0;
+    const selected = _selectedElements.has(sym);
+    const dimmed = _selectedElements.size > 0 && present && !selected;
+    const stateClass = selected ? "pt-selected" : (dimmed ? "pt-dimmed" : (present ? "pt-present" : "pt-absent"));
+    const cntLabel = present ? `<span class="pt-cell-cnt">${cnt}</span>` : "";
+    const style = `grid-row:${row};grid-column:${col};`;
+    const title = present
+      ? `${sym} — ${cnt} sample${cnt > 1 ? "s" : ""}`
+      : sym;
+    divs.push(
+      `<div class="pt-cell ${cat} ${stateClass}" style="${style}" data-sym="${escAttr(sym)}" ` +
+      `title="${escAttr(title)}" ` +
+      `${present ? `onclick="toggleElemSelection('${escAttr(sym)}', event)"` : ""}` +
+      `><span class="pt-cell-sym">${escHtml(sym)}</span>${cntLabel}</div>`
+    );
+  }
+
+  wrap.innerHTML = `<div class="ptable">${divs.join("")}</div>`;
+}
+
+function toggleElemSelection(sym, event) {
+  if (event && !event.ctrlKey && !event.metaKey) {
+    // Single click without modifier: if this is the only selected, deselect; else select only this
+    if (_selectedElements.size === 1 && _selectedElements.has(sym)) {
+      _selectedElements.clear();
+    } else {
+      _selectedElements.clear();
+      _selectedElements.add(sym);
+    }
+  } else {
+    // Ctrl/Cmd + click: toggle membership
+    if (_selectedElements.has(sym)) {
+      _selectedElements.delete(sym);
+    } else {
+      _selectedElements.add(sym);
+    }
+  }
+  _updatePTableHighlights();
+  _updateSelectionChips();
+  _renderFilteredSamples();
+}
+
+function _updatePTableHighlights() {
+  const countMap = {};
+  for (const s of _samplesCache) {
+    for (const el of (s.elements || [])) countMap[el] = (countMap[el] || 0) + 1;
+  }
+  document.querySelectorAll(".pt-cell[data-sym]").forEach(cell => {
+    const sym = cell.dataset.sym;
+    const cnt = countMap[sym] || 0;
+    const present = cnt > 0;
+    const selected = _selectedElements.has(sym);
+    const dimmed = _selectedElements.size > 0 && present && !selected;
+    cell.classList.remove("pt-present", "pt-selected", "pt-dimmed", "pt-absent");
+    if (selected)       cell.classList.add("pt-selected");
+    else if (dimmed)    cell.classList.add("pt-dimmed");
+    else if (present)   cell.classList.add("pt-present");
+    else                cell.classList.add("pt-absent");
+  });
+}
+
+function _updateSelectionChips() {
+  const chips = document.getElementById("elem-selection-chips");
+  const clearBtn = document.getElementById("elem-clear-btn");
+  if (_selectedElements.size === 0) {
+    chips.innerHTML = "";
+    clearBtn.style.display = "none";
+  } else {
+    chips.innerHTML = [..._selectedElements].sort()
+      .map(el => `<span class="elem-chip">${escHtml(el)}</span>`)
+      .join("");
+    clearBtn.style.display = "";
+  }
+}
+
+function clearElemSelection() {
+  _selectedElements.clear();
+  document.getElementById("elem-text-filter").value = "";
+  _updatePTableHighlights();
+  _updateSelectionChips();
+  _renderFilteredSamples();
+}
+
+function filterSamples() {
+  _renderFilteredSamples();
+}
+
+function _renderFilteredSamples() {
+  const textQ = (document.getElementById("elem-text-filter")?.value || "").trim().toLowerCase();
+
+  let filtered = _samplesCache;
+
+  // Apply text filter first (by element symbol or sample name)
+  if (textQ) {
+    filtered = filtered.filter(s => {
+      if ((s.name || "").toLowerCase().includes(textQ)) return true;
+      if ((s.formula || "").toLowerCase().includes(textQ)) return true;
+      return (s.elements || []).some(el => el.toLowerCase().startsWith(textQ));
+    });
+  }
+
+  // Apply element selection filter: sample must contain ALL selected elements
+  if (_selectedElements.size > 0) {
+    filtered = filtered.filter(s => {
+      const elSet = new Set(s.elements || []);
+      return [..._selectedElements].every(el => elSet.has(el));
+    });
+  }
+
+  // Update count chip
+  const el = document.getElementById("samples-result-count");
+  if (el) el.textContent = `${filtered.length} / ${_samplesCache.length} samples`;
+
+  const wrap = document.getElementById("samples-table-wrap");
+  if (!wrap) return;
+
+  if (!filtered.length) {
+    wrap.innerHTML = "";
+    hideEl("samples-table-wrap");
+    showEl("samples-empty");
+    return;
+  }
+  hideEl("samples-empty");
+
+  const tbody = filtered.map((s, i) => {
+    const formula = escHtml(s.formula || s.name || "—");
+    const name    = escHtml(s.name || "—");
+    const shortId = escHtml(s.id.split(':').pop().split('/').pop().slice(0, 8));
+    const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬</button>`;
+    return `<tr style="cursor:pointer" data-sid="${escAttr(s.id)}" data-sname="${escAttr(s.name||'')}">` +
+      `<td><span class="sample-formula">${formula}</span></td>` +
+      `<td>${name}</td>` +
+      `<td><span title="${escAttr(s.id)}" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${shortId}…</span></td>` +
+      `<td style="width:48px">${viewBtn}</td>` +
+      `</tr>`;
+  }).join("");
+
+  wrap.innerHTML = `<table>
+    <thead><tr><th>Formula</th><th>Name</th><th>ID</th><th style="width:48px"></th></tr></thead>
+    <tbody>${tbody}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll("tr[data-sid]").forEach(tr => {
+    tr.addEventListener("click", () => openSampleDetail(tr.dataset.sid, tr.dataset.sname));
+  });
+
+  showEl("samples-table-wrap");
 }
 
 async function openSampleDetail(sampleId, name) {
