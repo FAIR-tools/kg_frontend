@@ -125,11 +125,18 @@ def get_sample_xyz(sample_id: str):
 
     try:
         atoms = sample.to_structure(format="ase")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"No atomic structure available for this sample ({exc})")
+
+    if atoms is None:
+        raise HTTPException(status_code=422, detail="No atomic structure available for this sample")
+
+    try:
         buf = io.StringIO()
         ase_write(buf, atoms, format="extxyz")
         return FastResponse(content=buf.getvalue(), media_type="text/plain")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Could not convert to XYZ: {exc}")
+        raise HTTPException(status_code=500, detail=f"Could not serialise structure: {exc}")
 
 
 @router.get("/{sample_id:path}")

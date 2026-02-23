@@ -31,7 +31,6 @@
   <button data-tab="workflows">Workflows</button>
   <button data-tab="query">Query</button>
   <button data-tab="export">Export</button>
-  <button data-tab="upload">Upload</button>
 </nav>
 
 <main>
@@ -257,29 +256,6 @@ WHERE {
     </div>
   </div>
 
-  <!-- ═══ UPLOAD ════════════════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-upload">
-    <div class="panel-header">
-      <h2>Upload data</h2>
-      <p>Submit YAML workflow files to add them to the knowledge graph. Files are ingested immediately.</p>
-    </div>
-
-    <!-- Collaborator submit form -->
-    <section class="card" style="max-width:540px;margin-bottom:24px">
-      <h3 style="margin-top:0">Submit a file</h3>
-      <label class="field-label">Upload token
-        <input id="upload-token-input" type="password" placeholder="Paste your upload token"
-               style="width:100%;margin-top:4px" />
-      </label>
-      <label class="field-label" style="margin-top:12px">YAML file
-        <input id="upload-file-input" type="file" accept=".yaml,.yml"
-               style="margin-top:4px" />
-      </label>
-      <button class="btn-primary" style="margin-top:14px" onclick="submitUpload()">Upload</button>
-      <div id="upload-status" style="margin-top:10px"></div>
-    </section>
-  </div>
-
 </main>
 
 <footer>
@@ -297,6 +273,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260223b"></script>
+<script src="app.js?v=20260223c"></script>
 </body>
 </html>

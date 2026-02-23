@@ -67,9 +67,9 @@ async function loadSamples() {
     const thead = `<thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead>`;
     const tbody = data.map((s, i) => {
       const name = escHtml(s.name || "—");
-      const uri  = escHtml(s.id);
+      const shortId = escHtml(s.id.split(':').pop().split('/').pop().slice(0, 8));
       const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬 View</button>`;
-      return `<tr style="cursor:pointer" data-row="${i}"><td>${name}</td><td><span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${uri}</span></td><td>${viewBtn}</td></tr>`;
+      return `<tr style="cursor:pointer" data-row="${i}"><td>${name}</td><td><span title="${escAttr(s.id)}" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${shortId}…</span></td><td>${viewBtn}</td></tr>`;
     }).join("");
     wrap.innerHTML = `<table><thead><tr><th>Name</th><th>URI</th><th style="width:80px">View</th></tr></thead><tbody>${tbody}</tbody></table>`;
     wrap.querySelectorAll("tr[data-row]").forEach(tr => {
@@ -359,79 +359,6 @@ function doExport(format) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// UPLOAD
-// ═══════════════════════════════════════════════════════════
-async function submitUpload() {
-  const token = document.getElementById("upload-token-input").value.trim();
-  const fileInput = document.getElementById("upload-file-input");
-  const status = document.getElementById("upload-status");
-
-  if (!token) { status.innerHTML = alertHtml("error", "Enter your upload token."); return; }
-  if (!fileInput.files.length) { status.innerHTML = alertHtml("error", "Choose a YAML file first."); return; }
-
-  const file = fileInput.files[0];
-  if (!file.name.match(/\.ya?ml$/i)) {
-    status.innerHTML = alertHtml("error", "Only .yaml / .yml files are accepted.");
-    return;
-  }
-
-  status.innerHTML = '<div class="spinner" style="display:inline-block;width:16px;height:16px;border-width:2px;vertical-align:middle"></div> Uploading…';
-
-  const fd = new FormData();
-  fd.append("file", file);
-
-  try {
-    const res = await fetch(`${API}/api/upload`, {
-      method: "POST",
-      headers: { "X-Upload-Token": token },
-      body: fd,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-
-    const startTime = Date.now();
-    const tickerId = setInterval(() => {
-      const secs = Math.floor((Date.now() - startTime) / 1000);
-      status.innerHTML = `<div style="padding:8px 12px;border-left:3px solid var(--accent,#4caf50);background:var(--surface2);border-radius:4px;font-size:0.88rem;display:flex;align-items:center;gap:10px"><div class="spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0"></div><span>Rebuilding knowledge graph… <span style="opacity:0.6">${secs}s</span></span></div>`;
-    }, 1000);
-
-    fileInput.value = "";
-
-    // Poll rebuild status every 5s
-    let polls = 0;
-    const poll = setInterval(async () => {
-      try {
-        const st = await fetch(`${API}/api/upload/status`, { headers: { "X-Upload-Token": token } }).then(r => r.json());
-        if (st.status === "done") {
-          clearInterval(poll);
-          clearInterval(tickerId);
-          const errs = st.errors?.length ? ` (${st.errors.length} file(s) had parse errors)` : "";
-          const secs = Math.floor((Date.now() - startTime) / 1000);
-          status.innerHTML = alertHtml("success", `✓ Done in ${secs}s — <strong>${st.samples}</strong> sample(s) in graph${errs}.`);
-          _loadSampleCount();
-        } else if (st.status?.startsWith("error")) {
-          clearInterval(poll);
-          clearInterval(tickerId);
-          status.innerHTML = alertHtml("error", `Rebuild error: ${escHtml(st.status)}`);
-        } else if (++polls > 60) {
-          clearInterval(poll);
-          clearInterval(tickerId);
-          status.innerHTML = alertHtml("warn", "Rebuild is taking longer than expected — refresh the page to check sample count.");
-        }
-      } catch(_) {}
-    }, 5000);
-
-  } catch (e) {
-    status.innerHTML = alertHtml("error", escHtml(e.message));
-  }
-}
-
-function alertHtml(type, msg) {
-  const colors = { success: "var(--accent,#4caf50)", error: "var(--danger,#e05555)", warn: "#e0a020" };
-  return `<div style="padding:8px 12px;border-left:3px solid ${colors[type]||colors.warn};background:var(--surface2);border-radius:4px;font-size:0.88rem">${msg}</div>`;
-}
-
-// ═══════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════
 async function apiFetch(path, opts = {}) {
@@ -644,7 +571,8 @@ async function loadWorkflows() {
       <th>ID</th><th>Type</th><th>Method</th><th>Software / DOI</th><th>Potential</th><th>Output Samples</th>
     </tr></thead>`;
     const tbody = wfs.map(w => {
-      const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${escHtml(w.id)}</span>`;
+      const idShort = escHtml(w.id.split(':').pop().slice(0, 8));
+      const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${idShort}…</span>`;
       const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
       const method = w.method ? escHtml(w.method) : '—';
       const sw    = w.software

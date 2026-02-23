@@ -231,7 +231,10 @@
   } else {
     fetch(`/api/samples/xyz/${encodeURIComponent(sampleId)}`)
       .then(r => {
-        if (!r.ok) return r.text().then(t => { throw new Error(t || `HTTP ${r.status}`); });
+        if (!r.ok) return r.text().then(t => {
+          try { const j = JSON.parse(t); throw new Error(j.detail || t || `HTTP ${r.status}`); }
+          catch(e) { if (e instanceof SyntaxError) throw new Error(t || `HTTP ${r.status}`); throw e; }
+        });
         return r.text();
       })
       .then(xyz => {
