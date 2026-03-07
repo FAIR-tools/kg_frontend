@@ -1020,12 +1020,13 @@ async function loadDatasets() {
         : '—';
 
       const pub = ds.publication_doi
-        ? `<a href="${escAttr(ds.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px" title="${escAttr(ds.publication_title || ds.publication_doi)}">${escHtml(ds.publication_title ? (ds.publication_title.length > 60 ? ds.publication_title.slice(0,58)+'…' : ds.publication_title) : ds.publication_doi)}</a>`
+        ? `<a href="${escAttr(ds.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px" title="${escAttr(ds.publication_title || '')}">${escHtml(ds.publication_doi)}</a>`
         : '—';
 
-      const authors = ds.authors && ds.authors.length
-        ? `<span style="font-size:11px;color:var(--text-muted)">${escHtml(ds.authors.join(', '))}</span>`
+      const authorFmt = ds.authors && ds.authors.length
+        ? (ds.authors.length === 1 ? ds.authors[0] : ds.authors[0] + ' et al.')
         : '—';
+      const authors = `<span style="font-size:11px;color:var(--text-muted)" title="${escAttr((ds.authors||[]).join(', '))}">${escHtml(authorFmt)}</span>`;
 
       return `<tr>
         <td>${title}</td>
