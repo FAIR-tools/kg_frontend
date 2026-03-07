@@ -33,6 +33,7 @@
   <button data-tab="samples">Samples</button>
   <button data-tab="workflows">Workflows</button>
   <button data-tab="properties">Properties</button>
+  <button data-tab="datasets">Datasets</button>
   <button data-tab="query">Query</button>
   <button data-tab="export">Export</button>
 </nav>
@@ -73,7 +74,7 @@
   <div class="tab-panel" id="tab-samples">
     <div class="panel-header">
       <h2>Samples</h2>
-      <p>Browse samples by composition. Click elements to filter, Ctrl+click to add to selection.</p>
+      <p>Browse samples by composition. Click an element to add it to the filter; click again to remove it. Multiple selections show samples containing <em>all</em> selected elements.</p>
     </div>
     <div id="samples-alert"></div>
 
@@ -163,7 +164,22 @@
       </div>
     </div>
   </div>
-
+  <!-- ───────────────── DATASETS TAB ───────────────── -->
+  <div class="tab-panel" id="tab-datasets">
+    <div class="panel-header">
+      <h2>Datasets</h2>
+      <p>Source datasets and associated publications represented in this knowledge graph.</p>
+    </div>
+    <div id="datasets-alert"></div>
+    <div class="card" id="datasets-card">
+      <div id="datasets-loading" class="empty"><div class="spinner"></div></div>
+      <div id="datasets-table-wrap" style="display:none"></div>
+      <div id="datasets-empty" class="empty" style="display:none">
+        <div class="icon">🗂️</div>
+        <p>No datasets found in the knowledge graph.</p>
+      </div>
+    </div>
+  </div>
   <!-- ───────────── QUERY TAB ───────────── -->
   <div class="tab-panel" id="tab-query">
     <div class="panel-header">

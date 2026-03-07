@@ -16,6 +16,7 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     if (tab === "graph")      loadGraph();
     if (tab === "workflows")  loadWorkflows();
     if (tab === "properties") loadProperties();
+    if (tab === "datasets")   loadDatasets();
   });
 });
 
@@ -47,6 +48,20 @@ async function _loadSampleCount() {
 // ═══════════════════════════════════════════════════════════
 let _samplesCache = [];
 let _selectedElements = new Set();  // elements the user has clicked
+let _datasetsMap = {};              // dataset_uri → dataset object (loaded lazily)
+let _datasetsLoaded = false;
+
+async function _ensureDatasetsLoaded() {
+  if (_datasetsLoaded) return;
+  try {
+    const data = await apiFetch("/api/datasets");
+    _datasetsLoaded = true;
+    for (const d of (data || [])) _datasetsMap[d.uri] = d;
+  } catch (_) {
+    // Non-fatal: dataset enrichment is best-effort
+    _datasetsLoaded = true;
+  }
+}
 
 // Standard 18-column periodic table positions: [symbol, row, col, category-class]
 // Rows 9-10 = lanthanides / actinides (with a blank row 8 as spacer)
@@ -131,6 +146,9 @@ async function loadSamples() {
   hideEl("samples-empty");
   clearAlert("samples-alert");
 
+  // Pre-load datasets for detail enrichment (non-blocking)
+  _ensureDatasetsLoaded();
+
   try {
     const data = await apiFetch("/api/samples");
     _samplesCache = data;
@@ -179,7 +197,7 @@ function _renderPeriodicTable() {
     divs.push(
       `<div class="pt-cell ${cat} ${stateClass}" style="${style}" data-sym="${escAttr(sym)}" ` +
       `title="${escAttr(title)}" ` +
-      `${present ? `onclick="toggleElemSelection('${escAttr(sym)}', event)"` : ""}` +
+      `${present ? `onclick="toggleElemSelection('${escAttr(sym)}')"` : ""}` +
       `><span class="pt-cell-sym">${escHtml(sym)}</span>${cntLabel}</div>`
     );
   }
@@ -187,22 +205,13 @@ function _renderPeriodicTable() {
   wrap.innerHTML = `<div class="ptable">${divs.join("")}</div>`;
 }
 
-function toggleElemSelection(sym, event) {
-  if (event && !event.ctrlKey && !event.metaKey) {
-    // Single click without modifier: if this is the only selected, deselect; else select only this
-    if (_selectedElements.size === 1 && _selectedElements.has(sym)) {
-      _selectedElements.clear();
-    } else {
-      _selectedElements.clear();
-      _selectedElements.add(sym);
-    }
+function toggleElemSelection(sym) {
+  // Plain click always toggles — click again on the same element to deselect,
+  // click additional elements to add them (AND filter).
+  if (_selectedElements.has(sym)) {
+    _selectedElements.delete(sym);
   } else {
-    // Ctrl/Cmd + click: toggle membership
-    if (_selectedElements.has(sym)) {
-      _selectedElements.delete(sym);
-    } else {
-      _selectedElements.add(sym);
-    }
+    _selectedElements.add(sym);
   }
   _updatePTableHighlights();
   _updateSelectionChips();
@@ -329,6 +338,22 @@ async function openSampleDetail(sampleId, name) {
 
   try {
     const d = await apiFetch(`/api/samples/${encodeURIComponent(sampleId)}`);
+
+    // Enrich with dataset / publication info
+    await _ensureDatasetsLoaded();
+    const cached = _samplesCache.find(s => s.id === sampleId);
+    const datasetUri = cached?.dataset_uri || d.isPartOf || "";
+    const ds = datasetUri ? _datasetsMap[datasetUri] : null;
+    if (ds) {
+      d._dataset = {
+        title: ds.title || "",
+        data_link: ds.identifier || ds.uri || "",
+        publication_title: ds.publication_title || "",
+        publication_doi: ds.publication_doi || "",
+        authors: (ds.authors || []).join(", "),
+      };
+    }
+
     grid.innerHTML = renderDetailGrid(d);
     // Show View Structure button
     document.getElementById("detail-view-btn").onclick = () => openStructureViewer(sampleId, name);
@@ -358,6 +383,20 @@ function renderDetailGrid(obj, prefix = "") {
   for (const [k, v] of Object.entries(obj)) {
     if (v === null || v === undefined) continue;
     if (_ATOM_LEVEL_KEYS.has(k.toLowerCase())) continue;
+
+    // Special section: _dataset → show as a styled card with links
+    if (k === "_dataset" && !prefix) {
+      cells += `<div class="detail-item detail-item-full"><div class="key">Dataset</div>` +
+        `<div class="val">` +
+        (v.title ? `<div><strong>${escHtml(v.title)}</strong></div>` : "") +
+        (v.data_link ? `<div><a href="${escAttr(v.data_link)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:12px">🗂 Data: ${escHtml(v.data_link)}</a></div>` : "") +
+        (v.publication_title ? `<div style="margin-top:4px">${escHtml(v.publication_title)}</div>` : "") +
+        (v.publication_doi ? `<div><a href="${escAttr(v.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:12px">📄 Publication: ${escHtml(v.publication_doi)}</a></div>` : "") +
+        (v.authors ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">${escHtml(v.authors)}</div>` : "") +
+        `</div></div>`;
+      continue;
+    }
+
     const label = (prefix ? `${prefix}.` : "") + k;
     if (typeof v === "object" && !Array.isArray(v)) {
       cells += renderDetailGrid(v, label);
@@ -936,6 +975,69 @@ function renderPropertiesTable(data) {
 
 function filterProperties() {
   if (_propertiesCache.length) renderPropertiesTable(_propertiesCache);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DATASETS
+// ═══════════════════════════════════════════════════════════
+async function loadDatasets() {
+  showEl("datasets-loading");
+  hideEl("datasets-table-wrap");
+  hideEl("datasets-empty");
+  clearAlert("datasets-alert");
+
+  try {
+    await _ensureDatasetsLoaded();
+    const data = Object.values(_datasetsMap);
+    hideEl("datasets-loading");
+
+    if (!data.length) { showEl("datasets-empty"); return; }
+
+    // Sort by sample count descending (they come pre-sorted from cache, but just in case)
+    data.sort((a, b) => (b.sample_count || 0) - (a.sample_count || 0));
+
+    const rows = data.map(ds => {
+      const title = ds.title
+        ? `<span title="${escAttr(ds.uri)}">${escHtml(ds.title)}</span>`
+        : `<span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${escHtml(ds.uri.slice(0, 60))}</span>`;
+
+      const dataLink = ds.identifier
+        ? `<a href="${escAttr(ds.identifier)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(ds.identifier.length > 50 ? ds.identifier.slice(0,48)+'…' : ds.identifier)}</a>`
+        : '—';
+
+      const pub = ds.publication_doi
+        ? `<a href="${escAttr(ds.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px" title="${escAttr(ds.publication_title || ds.publication_doi)}">${escHtml(ds.publication_title ? (ds.publication_title.length > 60 ? ds.publication_title.slice(0,58)+'…' : ds.publication_title) : ds.publication_doi)}</a>`
+        : '—';
+
+      const authors = ds.authors && ds.authors.length
+        ? `<span style="font-size:11px;color:var(--text-muted)">${escHtml(ds.authors.join(', '))}</span>`
+        : '—';
+
+      return `<tr>
+        <td>${title}</td>
+        <td style="text-align:right;font-family:var(--mono)">${ds.sample_count || 0}</td>
+        <td>${dataLink}</td>
+        <td>${pub}</td>
+        <td>${authors}</td>
+      </tr>`;
+    }).join("");
+
+    const wrap = document.getElementById("datasets-table-wrap");
+    wrap.innerHTML = `<table>
+      <thead><tr>
+        <th>Dataset</th>
+        <th style="text-align:right">Samples</th>
+        <th>Data Link</th>
+        <th>Publication</th>
+        <th>Authors</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    showEl("datasets-table-wrap");
+  } catch (e) {
+    hideEl("datasets-loading");
+    showAlert("datasets-alert", "error", `Failed to load datasets: ${e.message}`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

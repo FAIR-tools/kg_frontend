@@ -322,6 +322,7 @@ details summary:hover { color: var(--text); }
   gap: 10px;
 }
 .detail-item { background: var(--surface2); border-radius: 8px; padding: 10px 14px; }
+.detail-item.detail-item-full { grid-column: 1 / -1; }
 .detail-item .key { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
 .detail-item .val { font-size: 13px; word-break: break-all; }
 

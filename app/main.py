@@ -15,6 +15,7 @@ from app.routes import (
     workflows,
     upload,
     properties,
+    datasets,
 )
 
 app = FastAPI(
@@ -43,6 +44,7 @@ app.include_router(nlq.router)
 app.include_router(workflows.router)
 app.include_router(upload.router)
 app.include_router(properties.router)
+app.include_router(datasets.router)
 
 # Crystal Toolkit structure viewer (Dash WSGI sub-app) — loaded lazily
 # so the app still starts if crystal-toolkit isn't installed yet.
