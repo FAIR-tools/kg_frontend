@@ -401,6 +401,7 @@ function renderDetailGrid(obj, prefix = "") {
     if (typeof v === "object" && !Array.isArray(v)) {
       cells += renderDetailGrid(v, label);
     } else {
+      if (Array.isArray(v) && v.length > 3) continue;
       const display = Array.isArray(v) ? JSON.stringify(v) : String(v);
       cells += `<div class="detail-item"><div class="key">${escHtml(label)}</div><div class="val">${escHtml(display)}</div></div>`;
     }
@@ -574,7 +575,7 @@ async function loadGraph() {
     _graphInstance = ForceGraph()(container)
       .width(container.offsetWidth || 900)
       .height(520)
-      .backgroundColor("#ffffff")
+      .backgroundColor("#0d0f18")
       .nodeId("id")
       .nodeLabel(n => `${n.label} (${n.group})`)
       .nodeRelSize(5)
