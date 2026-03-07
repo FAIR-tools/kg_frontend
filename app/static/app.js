@@ -561,6 +561,16 @@ async function loadGraph() {
 
     container.innerHTML = "";
 
+    // Show a note if only a subset of samples is visualised
+    const totalSamples = data.total_samples || data.nodes.filter(n => n.group === "sample").length;
+    const shownSamples = data.shown_samples || data.nodes.filter(n => n.group === "sample").length;
+    if (shownSamples < totalSamples) {
+      const note = document.createElement("p");
+      note.style.cssText = "margin:4px 0 8px;font-size:12px;color:var(--text-muted)";
+      note.textContent = `Showing ${shownSamples} of ${totalSamples} samples (evenly sampled across datasets). Use the Samples tab to browse all.`;
+      container.parentNode.insertBefore(note, container);
+    }
+
     _graphInstance = ForceGraph()(container)
       .width(container.offsetWidth || 900)
       .height(520)
