@@ -1,6 +1,9 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        CACHE_DATE: ${CACHE_DATE:-unknown}
     container_name: kg_frontend_app
     restart: unless-stopped
     ports:

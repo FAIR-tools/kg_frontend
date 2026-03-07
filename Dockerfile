@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir oxrdflib pyoxigraph && \
         "git+https://github.com/pyscal/atomRDF.git@main" \
         "git+https://github.com/OCDO/tools4RDF.git@main"
 
+# Pass --build-arg CACHE_DATE=$(date +%Y-%m-%d) to bust the COPY cache on deploy
+ARG CACHE_DATE=unknown
 COPY app/ ./app/
 RUN mkdir -p /data/rdf_structure_store
 
