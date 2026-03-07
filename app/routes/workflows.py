@@ -9,6 +9,7 @@ Instead of SPARQL, all lookups use the atomRDF KnowledgeGraph triple API
 (kg.graph.triples / kg.graph.value) which hits the rdflib index directly and is
 significantly faster than SPARQL when the workflow or sample URI is already known.
 """
+
 from fastapi import APIRouter, HTTPException
 from urllib.parse import unquote
 from rdflib import URIRef, RDF, RDFS
@@ -19,24 +20,24 @@ from app.cache import read_cache
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 # ── namespace constants (plain URIRef — no SPARQL overhead) ───────────────────
-_ASMO         = "http://purls.helmholtz-metadaten.de/asmo/"
-_PROV         = "http://www.w3.org/ns/prov#"
-_CMSO         = "http://purls.helmholtz-metadaten.de/cmso/"
+_ASMO = "http://purls.helmholtz-metadaten.de/asmo/"
+_PROV = "http://www.w3.org/ns/prov#"
+_CMSO = "http://purls.helmholtz-metadaten.de/cmso/"
 
-_ENERGY_CALC  = URIRef(f"{_ASMO}EnergyCalculation")
-_SIMULATION   = URIRef(f"{_ASMO}Simulation")
+_ENERGY_CALC = URIRef(f"{_ASMO}EnergyCalculation")
+_SIMULATION = URIRef(f"{_ASMO}Simulation")
 
-_PROV_ASSOC   = URIRef(f"{_PROV}wasAssociatedWith")
-_PROV_GEN_BY  = URIRef(f"{_PROV}wasGeneratedBy")
+_PROV_ASSOC = URIRef(f"{_PROV}wasAssociatedWith")
+_PROV_GEN_BY = URIRef(f"{_PROV}wasGeneratedBy")
 _PROV_DERIVED = URIRef(f"{_PROV}wasDerivedFrom")
 
-_ASMO_POT     = URIRef(f"{_ASMO}hasInteratomicPotential")
-_ASMO_METHOD  = URIRef(f"{_ASMO}hasComputationalMethod")
-_CMSO_PATH    = URIRef(f"{_CMSO}hasPath")
+_ASMO_POT = URIRef(f"{_ASMO}hasInteratomicPotential")
+_ASMO_METHOD = URIRef(f"{_ASMO}hasComputationalMethod")
+_CMSO_PATH = URIRef(f"{_CMSO}hasPath")
 
 _WORKFLOW_TYPES = {
     str(_ENERGY_CALC): "Energy Calculation",
-    str(_SIMULATION):  "Simulation",
+    str(_SIMULATION): "Simulation",
 }
 
 
@@ -66,9 +67,9 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     potential = ""
     potential_uri = ""
     if pot_node:
-        pot_label  = g.value(pot_node, RDFS.label)
-        pot_ref    = g.value(pot_node, _CMSO_REF)   # publication / DOI URI
-        pot_type   = g.value(pot_node, RDF.type)
+        pot_label = g.value(pot_node, RDFS.label)
+        pot_ref = g.value(pot_node, _CMSO_REF)  # publication / DOI URI
+        pot_type = g.value(pot_node, RDF.type)
         if pot_ref:
             potential_uri = str(pot_ref)
         if pot_label:
@@ -88,6 +89,7 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
 
     # Only expose samples that actually exist as AtomicScaleSample nodes in the KG
     _CMSO_SAMPLE = URIRef(f"{_CMSO}AtomicScaleSample")
+
     def _exists_as_sample(node) -> bool:
         if node is None:
             return False
@@ -99,7 +101,8 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
 
     # Output samples: sample_uri  PROV.wasGeneratedBy  workflow_uri
     output_samples = [
-        str(s) for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))
+        str(s)
+        for s, _, _ in g.triples((None, _PROV_GEN_BY, wf_uri))
         if s is not None and _exists_as_sample(s)
     ]
 
@@ -116,18 +119,18 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     path = str(path_lit) if path_lit else ""
 
     return {
-        "id":             str(wf_uri),
-        "type":           type_name,
-        "type_uri":       type_uri,
-        "method":         method,
-        "software":       software,
-        "potential":      potential,
-        "potential_uri":  potential_uri,
-        "path":           path,
-        "input_samples":  input_samples,
+        "id": str(wf_uri),
+        "type": type_name,
+        "type_uri": type_uri,
+        "method": method,
+        "software": software,
+        "potential": potential,
+        "potential_uri": potential_uri,
+        "path": path,
+        "input_samples": input_samples,
         "output_samples": output_samples,
         # "samples" kept for backward-compat with the JS View-button logic
-        "samples":        output_samples,
+        "samples": output_samples,
     }
 
 
@@ -139,12 +142,12 @@ def list_workflows():
         return cached
 
     kg = get_kg()
-    g  = kg.graph  # rdflib ConjunctiveGraph
+    g = kg.graph  # rdflib ConjunctiveGraph
 
     records: list[dict] = []
     for type_ref, type_label in (
         (_ENERGY_CALC, "Energy Calculation"),
-        (_SIMULATION,  "Simulation"),
+        (_SIMULATION, "Simulation"),
     ):
         for wf_uri, _, _ in g.triples((None, RDF.type, type_ref)):
             records.append(_build_record(g, wf_uri, type_label, str(type_ref)))
@@ -162,12 +165,14 @@ def get_workflow(workflow_id: str):
     without mutating class-level state (which is not safe in concurrent ASGI).
     """
     workflow_id = unquote(workflow_id)
-    kg  = get_kg()
-    g   = kg.graph
+    kg = get_kg()
+    g = kg.graph
     wf_uri = URIRef(workflow_id)
 
     wf_type = g.value(wf_uri, RDF.type)
     if wf_type is None or str(wf_type) not in _WORKFLOW_TYPES:
-        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow not found: {workflow_id}"
+        )
 
     return _build_record(g, wf_uri, _WORKFLOW_TYPES[str(wf_type)], str(wf_type))

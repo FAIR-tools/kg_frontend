@@ -18,12 +18,12 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
-_UPLOAD_TOKEN  = os.environ.get("UPLOAD_TOKEN", "")
+_UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "")
 
-_DATA_ROOT   = "/data" if os.path.isdir("/data") else os.path.join(os.getcwd(), "data")
-UPLOAD_DIR   = os.path.join(_DATA_ROOT, "uploads")
-_STORE_PATH  = os.path.join(_DATA_ROOT, "structure_store")
-_DB_PATH     = os.path.join(_DATA_ROOT, "graph.db")
+_DATA_ROOT = "/data" if os.path.isdir("/data") else os.path.join(os.getcwd(), "data")
+UPLOAD_DIR = os.path.join(_DATA_ROOT, "uploads")
+_STORE_PATH = os.path.join(_DATA_ROOT, "structure_store")
+_DB_PATH = os.path.join(_DATA_ROOT, "graph.db")
 _GIT_YAML_DIR = "/kg_data/data"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -35,7 +35,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # (a concurrent upload arrived mid-rebuild) and loops again if so.
 # This guarantees N simultaneous uploads collapse into one correct final rebuild.
 _rebuild_pending = threading.Event()
-_rebuild_active  = threading.Event()   # True while the worker thread is alive
+_rebuild_active = threading.Event()  # True while the worker thread is alive
 rebuild_state: dict = {"status": "idle", "started_at": None}
 
 
@@ -43,7 +43,10 @@ def _rebuild_worker():
     global rebuild_state
     while True:
         _rebuild_pending.clear()
-        rebuild_state = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
+        rebuild_state = {
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
         try:
             from pathlib import Path as _Path
             from atomrdf import KnowledgeGraph
@@ -52,16 +55,17 @@ def _rebuild_worker():
             import app.routes.graph as graph_mod
 
             yaml_files = sorted(
-                glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yaml"), recursive=True) +
-                glob.glob(os.path.join(UPLOAD_DIR,    "**", "*.yml"),  recursive=True) +
-                glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True) +
-                glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"),  recursive=True)
+                glob.glob(os.path.join(UPLOAD_DIR, "**", "*.yaml"), recursive=True)
+                + glob.glob(os.path.join(UPLOAD_DIR, "**", "*.yml"), recursive=True)
+                + glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yaml"), recursive=True)
+                + glob.glob(os.path.join(_GIT_YAML_DIR, "**", "*.yml"), recursive=True)
             )
             log.info("[rebuild] %d YAML file(s) found", len(yaml_files))
 
             # Load manifest (path → mtime) to skip already-parsed files
             _manifest_path = os.path.join(_DATA_ROOT, "parsed_manifest.json")
             import json as _json
+
             manifest: dict = {}
             no_manifest = not os.path.exists(_manifest_path)
             if not no_manifest:
@@ -75,22 +79,33 @@ def _rebuild_worker():
             # scratch-rebuild code — re-parsing into it would create duplicates.
             # Close the app's KG first to release file descriptors, then wipe.
             if no_manifest and os.path.exists(_DB_PATH):
-                log.info("[rebuild] no manifest found — closing KG and wiping DB to prevent duplicates")
+                log.info(
+                    "[rebuild] no manifest found — closing KG and wiping DB to prevent duplicates"
+                )
                 from app.graph_state import close_kg
+
                 close_kg()
                 os.remove(_DB_PATH)
                 if os.path.isdir(_STORE_PATH):
                     import shutil as _shutil
+
                     _shutil.rmtree(_STORE_PATH)
                 os.makedirs(_STORE_PATH, exist_ok=True)
 
-            to_parse = [(yf, os.path.getmtime(yf)) for yf in yaml_files
-                        if manifest.get(yf) != os.path.getmtime(yf)]
+            to_parse = [
+                (yf, os.path.getmtime(yf))
+                for yf in yaml_files
+                if manifest.get(yf) != os.path.getmtime(yf)
+            ]
 
             if not to_parse:
                 log.info("[rebuild] all files already up-to-date — skipping parse")
-                rebuild_state = {"status": "done", "samples": len(get_kg().sample_ids),
-                                 "errors": [], "started_at": rebuild_state["started_at"]}
+                rebuild_state = {
+                    "status": "done",
+                    "samples": len(get_kg().sample_ids),
+                    "errors": [],
+                    "started_at": rebuild_state["started_at"],
+                }
                 if not _rebuild_pending.is_set():
                     break
                 log.info("[rebuild] new upload detected — re-checking")
@@ -100,10 +115,13 @@ def _rebuild_worker():
 
             # Open existing KG (create if absent)
             os.makedirs(_STORE_PATH, exist_ok=True)
-            kg = KnowledgeGraph(store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH)
+            kg = KnowledgeGraph(
+                store="SQLAlchemy", store_file=_DB_PATH, structure_store=_STORE_PATH
+            )
             parser = WorkflowParser(kg=kg)
             errors = []
             import json as _json
+
             for yf, mtime in to_parse:
                 try:
                     parser.parse(yf)
@@ -121,8 +139,12 @@ def _rebuild_worker():
 
             n = len(kg.sample_ids)
             log.info("[rebuild] done — %d sample(s), %d error(s)", n, len(errors))
-            rebuild_state = {"status": "done", "samples": n, "errors": errors,
-                             "started_at": rebuild_state["started_at"]}
+            rebuild_state = {
+                "status": "done",
+                "samples": n,
+                "errors": errors,
+                "started_at": rebuild_state["started_at"],
+            }
         except Exception as e:
             log.error("[rebuild] unexpected error: %s", e)
             rebuild_state["status"] = f"error: {e}"
@@ -150,13 +172,17 @@ async def submit_file(
 ):
     """Upload a YAML file. Requires X-Upload-Token header. Triggers a KG rebuild immediately."""
     if not _UPLOAD_TOKEN:
-        raise HTTPException(status_code=503, detail="Upload not configured (UPLOAD_TOKEN unset)")
+        raise HTTPException(
+            status_code=503, detail="Upload not configured (UPLOAD_TOKEN unset)"
+        )
     if x_upload_token != _UPLOAD_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid upload token")
 
     name = Path(file.filename).name
     if not name.endswith((".yaml", ".yml")):
-        raise HTTPException(status_code=400, detail="Only .yaml / .yml files are accepted")
+        raise HTTPException(
+            status_code=400, detail="Only .yaml / .yml files are accepted"
+        )
 
     content = await file.read()
     if len(content) > 100 * 1024 * 1024:

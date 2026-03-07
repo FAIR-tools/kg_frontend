@@ -13,7 +13,7 @@ import os
 import json
 from typing import Any
 
-_DATA_DIR  = os.environ.get("DATA_DIR", "/data")
+_DATA_DIR = os.environ.get("DATA_DIR", "/data")
 _CACHE_DIR = os.path.join(_DATA_DIR, "cache")
 
 

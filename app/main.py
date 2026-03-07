@@ -3,7 +3,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from app.routes import sparql, guided, ontology, samples, export, admin, graph, nlq, workflows, upload, properties
+from app.routes import (
+    sparql,
+    guided,
+    ontology,
+    samples,
+    export,
+    admin,
+    graph,
+    nlq,
+    workflows,
+    upload,
+    properties,
+)
 
 app = FastAPI(
     title="AtomRDF Knowledge Graph",
@@ -37,6 +49,7 @@ app.include_router(properties.router)
 try:
     from starlette.middleware.wsgi import WSGIMiddleware
     from app.viewer_dash import viewer_wsgi
+
     app.mount("/viewer", WSGIMiddleware(viewer_wsgi))
 except ImportError:
     pass  # crystal-toolkit not yet installed; /viewer unavailable until base image rebuild

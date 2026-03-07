@@ -6,9 +6,19 @@ router = APIRouter(prefix="/api/samples", tags=["samples"])
 
 # Fields that contain per-atom arrays — too large and not useful in the detail panel
 _ATOM_LEVEL_KEYS = {
-    "atoms", "positions", "species", "atom_species", "elements",
-    "forces", "velocities", "charges", "masses", "tags",
-    "magnetic_moments", "momenta", "numbers",
+    "atoms",
+    "positions",
+    "species",
+    "atom_species",
+    "elements",
+    "forces",
+    "velocities",
+    "charges",
+    "masses",
+    "tags",
+    "magnetic_moments",
+    "momenta",
+    "numbers",
 }
 
 
@@ -33,6 +43,7 @@ def _safe_serialize(obj, depth=0):
     # rdflib types
     try:
         from rdflib import URIRef, Literal
+
         if isinstance(obj, (URIRef, Literal)):
             try:
                 return obj.toPython()
@@ -43,6 +54,7 @@ def _safe_serialize(obj, depth=0):
     # numpy scalars / arrays
     try:
         import numpy as np
+
         if isinstance(obj, np.integer):
             return int(obj)
         if isinstance(obj, np.floating):
@@ -54,6 +66,7 @@ def _safe_serialize(obj, depth=0):
     # pydantic models
     try:
         from pydantic import BaseModel
+
         if isinstance(obj, BaseModel):
             return _safe_serialize(obj.model_dump(), depth)
     except ImportError:
@@ -77,7 +90,11 @@ def _safe_serialize(obj, depth=0):
         if not items:
             return None
         # Drop large flat lists of numbers (atom-level)
-        if depth > 0 and len(items) > 50 and all(isinstance(i, (int, float)) for i in items):
+        if (
+            depth > 0
+            and len(items) > 50
+            and all(isinstance(i, (int, float)) for i in items)
+        ):
             return f"[{len(items)} values]"
         return items
     # fallback
@@ -95,15 +112,16 @@ def list_samples():
         return cached
 
     kg = get_kg()
-    ids = kg.sample_ids          # list of URIRef
-    names = kg.sample_names      # list of str | None
+    ids = kg.sample_ids  # list of URIRef
+    names = kg.sample_names  # list of str | None
 
     result = []
     from rdflib import URIRef as _URIRef
+
     _CMSO_NS = "http://purls.helmholtz-metadaten.de/cmso/"
-    _HAS_SPECIES   = _URIRef(f"{_CMSO_NS}hasSpecies")
-    _HAS_ELEMENT   = _URIRef(f"{_CMSO_NS}hasElement")
-    _HAS_SYM       = _URIRef(f"{_CMSO_NS}hasChemicalSymbol")
+    _HAS_SPECIES = _URIRef(f"{_CMSO_NS}hasSpecies")
+    _HAS_ELEMENT = _URIRef(f"{_CMSO_NS}hasElement")
+    _HAS_SYM = _URIRef(f"{_CMSO_NS}hasChemicalSymbol")
     _HAS_ELEM_RATIO = _URIRef(f"{_CMSO_NS}hasElementRatio")
 
     def _element_ratio(sample_uri):
@@ -111,7 +129,7 @@ def list_samples():
         species = kg.graph.value(sample_uri, _HAS_SPECIES)
         if species is not None:
             for _, _, element in kg.graph.triples((species, _HAS_ELEMENT, None)):
-                sym   = kg.graph.value(element, _HAS_SYM)
+                sym = kg.graph.value(element, _HAS_SYM)
                 ratio = kg.graph.value(element, _HAS_ELEM_RATIO)
                 if sym is not None:
                     try:
@@ -136,13 +154,15 @@ def list_samples():
     for sid, sname in zip(ids, names):
         uri = sid if hasattr(sid, "toPython") else _URIRef(str(sid))
         er = _element_ratio(uri)
-        result.append({
-            "id":            _uri_to_str(sid),
-            "name":          sname or "",
-            "elements":      sorted(er.keys()),
-            "element_ratio": er,
-            "formula":       _formula(er),
-        })
+        result.append(
+            {
+                "id": _uri_to_str(sid),
+                "name": sname or "",
+                "elements": sorted(er.keys()),
+                "element_ratio": er,
+                "formula": _formula(er),
+            }
+        )
     return result
 
 
@@ -170,27 +190,36 @@ def get_sample_xyz(sample_id: str):
     try:
         atoms = sample.to_structure(format="ase")
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"No atomic structure available for this sample ({exc})")
+        raise HTTPException(
+            status_code=422,
+            detail=f"No atomic structure available for this sample ({exc})",
+        )
 
     if atoms is None:
-        raise HTTPException(status_code=422, detail="No atomic structure available for this sample")
+        raise HTTPException(
+            status_code=422, detail="No atomic structure available for this sample"
+        )
 
     try:
         buf = io.StringIO()
         ase_write(buf, atoms, format="extxyz")
         return FastResponse(content=buf.getvalue(), media_type="text/plain")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Could not serialise structure: {exc}")
+        raise HTTPException(
+            status_code=500, detail=f"Could not serialise structure: {exc}"
+        )
 
 
 @router.get("/{sample_id:path}")
 def get_sample(sample_id: str):
     """Return detailed info for a single sample."""
     from urllib.parse import unquote
+
     sample_id = unquote(sample_id)
     kg = get_kg()
 
     from rdflib import URIRef
+
     sample_uri = URIRef(sample_id)
 
     sample = None

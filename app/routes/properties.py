@@ -21,16 +21,25 @@ from app.cache import read_cache
 
 router = APIRouter(prefix="/api/properties", tags=["properties"])
 
-_ASMO_NS   = "http://purls.helmholtz-metadaten.de/asmo/"
-_PROV_NS   = "http://www.w3.org/ns/prov#"
-_CMSO_NS   = "http://purls.helmholtz-metadaten.de/cmso/"
+_ASMO_NS = "http://purls.helmholtz-metadaten.de/asmo/"
+_PROV_NS = "http://www.w3.org/ns/prov#"
+_CMSO_NS = "http://purls.helmholtz-metadaten.de/cmso/"
 
 _PROP_TYPES = [
-    "TotalEnergy", "Energy", "BulkModulus", "Volume",
-    "Pressure", "VirialPressure",
-    "FreeEnergy", "Temperature",
-    "FlowStress", "Stress", "Strain", "StrainRate",
-    "EquationOfStateFit", "ThermodynamicIntegration",
+    "TotalEnergy",
+    "Energy",
+    "BulkModulus",
+    "Volume",
+    "Pressure",
+    "VirialPressure",
+    "FreeEnergy",
+    "Temperature",
+    "FlowStress",
+    "Stress",
+    "Strain",
+    "StrainRate",
+    "EquationOfStateFit",
+    "ThermodynamicIntegration",
 ]
 
 
@@ -39,17 +48,19 @@ def _build_properties_live():
     from rdflib import URIRef, RDF, RDFS
 
     kg = get_kg()
-    g  = kg.graph
+    g = kg.graph
 
     _CMSO_SAMPLE = URIRef(f"{_CMSO_NS}AtomicScaleSample")
     _PROV_GEN_BY = URIRef(f"{_PROV_NS}wasGeneratedBy")
-    _HAS_VALUE   = URIRef(f"{_ASMO_NS}hasValue")
-    _HAS_UNIT    = URIRef(f"{_ASMO_NS}hasUnit")
-    _CALC_BY     = URIRef(f"{_ASMO_NS}wasCalculatedBy")
-    _HAS_PATH    = URIRef(f"{_CMSO_NS}hasPath")
+    _HAS_VALUE = URIRef(f"{_ASMO_NS}hasValue")
+    _HAS_UNIT = URIRef(f"{_ASMO_NS}hasUnit")
+    _CALC_BY = URIRef(f"{_ASMO_NS}wasCalculatedBy")
+    _HAS_PATH = URIRef(f"{_CMSO_NS}hasPath")
 
     def _exists(node):
-        return node is not None and any(True for _ in g.triples((URIRef(str(node)), RDF.type, _CMSO_SAMPLE)))
+        return node is not None and any(
+            True for _ in g.triples((URIRef(str(node)), RDF.type, _CMSO_SAMPLE))
+        )
 
     # workflow → samples map
     sim_to_samples: dict[str, list[str]] = {}
@@ -62,10 +73,10 @@ def _build_properties_live():
         pt_uri = URIRef(f"{_ASMO_NS}{pt}")
         for prop_node, _, _ in g.triples((None, RDF.type, pt_uri)):
             label_lit = g.value(prop_node, RDFS.label)
-            label     = str(label_lit) if label_lit else pt
+            label = str(label_lit) if label_lit else pt
 
             value_lit = g.value(prop_node, _HAS_VALUE)
-            has_path  = g.value(prop_node, _HAS_PATH) is not None
+            has_path = g.value(prop_node, _HAS_PATH) is not None
 
             if value_lit is not None:
                 try:
@@ -80,24 +91,26 @@ def _build_properties_live():
                 continue
 
             unit_node = g.value(prop_node, _HAS_UNIT)
-            unit      = str(unit_node).split("/")[-1] if unit_node else ""
-            unit_uri  = str(unit_node) if unit_node else ""
+            unit = str(unit_node).split("/")[-1] if unit_node else ""
+            unit_uri = str(unit_node) if unit_node else ""
 
-            wf_node  = g.value(prop_node, _CALC_BY)
-            wf_id    = str(wf_node) if wf_node else ""
-            samples  = sim_to_samples.get(wf_id, [])
+            wf_node = g.value(prop_node, _CALC_BY)
+            wf_id = str(wf_node) if wf_node else ""
+            samples = sim_to_samples.get(wf_id, [])
 
-            records.append({
-                "id":             str(prop_node),
-                "type":           pt,
-                "label":          label,
-                "value":          value,
-                "value_is_array": value_is_array,
-                "unit":           unit,
-                "unit_uri":       unit_uri,
-                "workflow_id":    wf_id,
-                "sample_ids":     samples,
-            })
+            records.append(
+                {
+                    "id": str(prop_node),
+                    "type": pt,
+                    "label": label,
+                    "value": value,
+                    "value_is_array": value_is_array,
+                    "unit": unit,
+                    "unit_uri": unit_uri,
+                    "workflow_id": wf_id,
+                    "sample_ids": samples,
+                }
+            )
 
     records.sort(key=lambda r: (r["type"], r["label"], r["id"]))
     return records

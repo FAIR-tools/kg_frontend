@@ -8,8 +8,16 @@ FROM ghcr.io/fair-tools/kg_frontend_base:latest
 
 USER root
 WORKDIR /app
+
+# Install Oxigraph RDFLib plugin and update atomRDF to no_local_files branch
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+RUN pip install --no-cache-dir oxrdflib pyoxigraph && \
+    pip install --no-cache-dir --no-deps \
+        "git+https://github.com/pyscal/atomRDF.git@no_local_files" \
+        "git+https://github.com/OCDO/tools4RDF.git@main"
+
 COPY app/ ./app/
-RUN mkdir -p /data/structure_store
+RUN mkdir -p /data/rdf_structure_store
 
 EXPOSE 8000
 
