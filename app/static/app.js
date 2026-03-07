@@ -581,7 +581,7 @@ async function loadGraph() {
       .nodeVal(n => n.group === "sample" ? 2.5 : 1)
       .nodeColor(n => NODE_COLORS[n.group] || NODE_COLORS.other)
       .linkLabel(l => l.label)
-      .linkColor(() => "rgba(80,80,120,0.15)")
+      .linkColor(() => "rgba(80,80,120,0.4)")
       .linkWidth(0.8)
       .linkDirectionalArrowLength(3)
       .linkDirectionalArrowRelPos(1)
