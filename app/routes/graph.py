@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/graph", tags=["graph"])
 SAMPLE_TYPE = "http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample"
 _SAMPLE_URI = URIRef(SAMPLE_TYPE)
 
-SAMPLE_LIMIT = 80  # keep the graph readable
+SAMPLE_LIMIT = 200  # cached on first load; force-graph stays interactive up to ~3-4k nodes
 
 # Skip schema/ontology predicates — they link to class nodes, not data nodes
 _SCHEMA_PREFIXES = (
