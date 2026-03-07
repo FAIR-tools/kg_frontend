@@ -1,19 +1,66 @@
 """
 Loads and caches the merged ontology (CMSO + ASMO + PLDO + LDO) at startup.
 Provides helpers to list classes and properties reachable from a given class.
+
+NOTE: The purls.helmholtz-metadaten.de PURL server returns 404 for content-
+negotiated RDF requests on CDOS ontologies (pldo, podo, ldo, cdco).  We work
+around this by loading the OWL files directly from GitHub.
 """
 
 from __future__ import annotations
 from functools import lru_cache
-from atomrdf.ontology import read_ontology
+from tools4rdf.network.parser import parse_ontology
+from tools4rdf.network.network import OntologyNetworkBase
 
 _onto = None
+
+# Direct GitHub raw URLs for ontologies whose PURLs are broken for RDF
+_ONTOLOGY_URLS = {
+    "cmso": "https://purls.helmholtz-metadaten.de/cmso/",
+    "asmo": "https://purls.helmholtz-metadaten.de/asmo/",
+    "pldo": "https://raw.githubusercontent.com/OCDO/pldo/main/pldo.owl",
+    "podo": "https://raw.githubusercontent.com/OCDO/podo/main/podo.owl",
+    "ldo":  "https://raw.githubusercontent.com/OCDO/ldo/main/ldo.owl",
+    "cdco": "https://raw.githubusercontent.com/OCDO/cdco/main/cdco.owl",
+}
+
+
+def _read_ontology():
+    """Equivalent to atomrdf.ontology.read_ontology() but with working URLs."""
+    cmso = parse_ontology(_ONTOLOGY_URLS["cmso"])
+    pldo = parse_ontology(_ONTOLOGY_URLS["pldo"])
+    podo = parse_ontology(_ONTOLOGY_URLS["podo"])
+    asmo = parse_ontology(_ONTOLOGY_URLS["asmo"])
+    ldo  = parse_ontology(_ONTOLOGY_URLS["ldo"])
+    cdco = parse_ontology(_ONTOLOGY_URLS["cdco"])
+
+    combo = cmso + cdco + pldo + podo + asmo + ldo
+    combo.attributes["data_property"]["cmso:hasSymbol"].range.append("str")
+    combo.attributes["data_property"]["asmo:hasValue"].range.extend(
+        ["float", "double", "int", "str"]
+    )
+
+    combo = OntologyNetworkBase(combo)
+    combo.add_namespace("rdfs", "http://www.w3.org/2000/01/rdf-schema#")
+    combo.add_term(
+        "http://www.w3.org/2000/01/rdf-schema#label",
+        "data_property",
+        delimiter="#",
+        namespace="rdfs",
+        rn=["str"],
+    )
+    combo.add_path(("asmo:CalculatedProperty", "rdfs:label", "string"))
+    combo.add_path(("asmo:InputParameter", "rdfs:label", "string"))
+    combo.add_path(("prov:SoftwareAgent", "rdfs:label", "string"))
+    combo.add_path(("asmo:InteratomicPotential", "rdfs:label", "string"))
+
+    return combo
 
 
 def get_onto():
     global _onto
     if _onto is None:
-        _onto = read_ontology()
+        _onto = _read_ontology()
     return _onto
 
 
