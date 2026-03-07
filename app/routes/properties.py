@@ -1,10 +1,9 @@
 """
 /api/properties — lists CalculatedProperty instances from the knowledge graph.
 
-Property types surfaced:
-  TotalEnergy, Energy, BulkModulus, Volume, Pressure, VirialPressure,
-  FreeEnergy, Temperature, FlowStress, Stress, Strain, StrainRate,
-  EquationOfStateFit, ThermodynamicIntegration
+Dynamically discovers all ASMO-typed property instances that are linked to a
+workflow via asmo:wasCalculatedBy (i.e. actual *calculated* properties).
+Input parameters (linked via asmo:hasInputParameter) are excluded.
 
 Each record contains:
   id, type, label, value (scalar float or null for arrays), value_is_array,
@@ -25,26 +24,22 @@ _ASMO_NS = "http://purls.helmholtz-metadaten.de/asmo/"
 _PROV_NS = "http://www.w3.org/ns/prov#"
 _CMSO_NS = "http://purls.helmholtz-metadaten.de/cmso/"
 
-_PROP_TYPES = [
-    "TotalEnergy",
-    "Energy",
-    "BulkModulus",
-    "Volume",
-    "Pressure",
-    "VirialPressure",
-    "FreeEnergy",
-    "Temperature",
-    "FlowStress",
-    "Stress",
-    "Strain",
-    "StrainRate",
-    "EquationOfStateFit",
-    "ThermodynamicIntegration",
-]
+# Types that are NOT properties (workflows, potentials, methods, etc.)
+_SKIP_TYPES = {
+    f"{_ASMO_NS}EnergyCalculation",
+    f"{_ASMO_NS}Simulation",
+    f"{_ASMO_NS}InteratomicPotential",
+    f"{_ASMO_NS}ModifiedEmbeddedAtomModel",
+    f"{_ASMO_NS}EmbeddedAtomModel",
+    f"{_ASMO_NS}PairPotential",
+    f"{_ASMO_NS}MolecularStatics",
+    f"{_ASMO_NS}MolecularDynamics",
+    f"{_ASMO_NS}DensityFunctionalTheory",
+}
 
 
 def _build_properties_live():
-    """Live query fallback — same logic as generate_cache.py."""
+    """Live query — discovers all calculated properties dynamically."""
     from rdflib import URIRef, RDF, RDFS
 
     kg = get_kg()
@@ -69,48 +64,57 @@ def _build_properties_live():
             sim_to_samples.setdefault(str(wf), []).append(str(s))
 
     records = []
-    for pt in _PROP_TYPES:
-        pt_uri = URIRef(f"{_ASMO_NS}{pt}")
-        for prop_node, _, _ in g.triples((None, RDF.type, pt_uri)):
-            label_lit = g.value(prop_node, RDFS.label)
-            label = str(label_lit) if label_lit else pt
 
-            value_lit = g.value(prop_node, _HAS_VALUE)
-            has_path = g.value(prop_node, _HAS_PATH) is not None
+    # Find all property nodes that have asmo:wasCalculatedBy (= calculated properties)
+    for prop_node, _, wf_node in g.triples((None, _CALC_BY, None)):
+        # Determine the property type from rdf:type
+        prop_type_uri = g.value(prop_node, RDF.type)
+        if prop_type_uri is None:
+            continue
+        type_str = str(prop_type_uri)
+        if type_str in _SKIP_TYPES or not type_str.startswith(_ASMO_NS):
+            continue
 
-            if value_lit is not None:
-                try:
-                    value = float(value_lit.toPython())
-                except Exception:
-                    value = str(value_lit)
-                value_is_array = False
-            elif has_path:
-                value = None
-                value_is_array = True
-            else:
-                continue
+        pt = type_str[len(_ASMO_NS):]
 
-            unit_node = g.value(prop_node, _HAS_UNIT)
-            unit = str(unit_node).split("/")[-1] if unit_node else ""
-            unit_uri = str(unit_node) if unit_node else ""
+        label_lit = g.value(prop_node, RDFS.label)
+        label = str(label_lit) if label_lit else pt
 
-            wf_node = g.value(prop_node, _CALC_BY)
-            wf_id = str(wf_node) if wf_node else ""
-            samples = sim_to_samples.get(wf_id, [])
+        value_lit = g.value(prop_node, _HAS_VALUE)
+        has_path = g.value(prop_node, _HAS_PATH) is not None
 
-            records.append(
-                {
-                    "id": str(prop_node),
-                    "type": pt,
-                    "label": label,
-                    "value": value,
-                    "value_is_array": value_is_array,
-                    "unit": unit,
-                    "unit_uri": unit_uri,
-                    "workflow_id": wf_id,
-                    "sample_ids": samples,
-                }
-            )
+        if value_lit is not None:
+            try:
+                value = float(value_lit.toPython())
+            except Exception:
+                value = str(value_lit)
+            value_is_array = False
+        elif has_path:
+            value = None
+            value_is_array = True
+        else:
+            continue
+
+        unit_node = g.value(prop_node, _HAS_UNIT)
+        unit = str(unit_node).split("/")[-1] if unit_node else ""
+        unit_uri = str(unit_node) if unit_node else ""
+
+        wf_id = str(wf_node) if wf_node else ""
+        samples = sim_to_samples.get(wf_id, [])
+
+        records.append(
+            {
+                "id": str(prop_node),
+                "type": pt,
+                "label": label,
+                "value": value,
+                "value_is_array": value_is_array,
+                "unit": unit,
+                "unit_uri": unit_uri,
+                "workflow_id": wf_id,
+                "sample_ids": samples,
+            }
+        )
 
     records.sort(key=lambda r: (r["type"], r["label"], r["id"]))
     return records
