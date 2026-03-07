@@ -897,7 +897,7 @@ async function loadProperties() {
   if (_propertiesLoaded) return;
   _propertiesLoaded = true;
   showEl("properties-loading");
-  hideEl("properties-table-wrap");
+  hideEl("properties-cards");
   hideEl("properties-empty");
   clearAlert("properties-alert");
 
@@ -909,10 +909,9 @@ async function loadProperties() {
     const scalarCount = data.filter(p => !p.value_is_array).length;
     const countEl = document.getElementById("hdr-prop-count");
     if (countEl) countEl.textContent = scalarCount;
-    document.getElementById("prop-result-count").textContent = `${scalarCount} scalar, ${data.length - scalarCount} array`;
 
     if (!data.length) { showEl("properties-empty"); return; }
-    renderPropertiesTable(data);
+    renderPropertyCards(data);
   } catch (e) {
     _propertiesLoaded = false;
     hideEl("properties-loading");
@@ -921,71 +920,162 @@ async function loadProperties() {
   }
 }
 
-function renderPropertiesTable(data) {
-  const showArrays = document.getElementById("prop-show-arrays")?.checked ?? false;
-  const filter     = (document.getElementById("prop-filter")?.value ?? "").trim().toLowerCase();
-
-  const filtered = data.filter(p => {
-    if (!showArrays && p.value_is_array) return false;
-    if (filter) {
-      const hay = (p.type + " " + p.label).toLowerCase();
-      if (!hay.includes(filter)) return false;
-    }
-    return true;
-  });
-
-  const countEl = document.getElementById("prop-result-count");
-  if (countEl) countEl.textContent = `${filtered.length} shown`;
-
-  if (!filtered.length) {
-    const wrap = document.getElementById("properties-table-wrap");
-    wrap.innerHTML = `<div class="empty" style="padding:24px"><p>No properties match your filter.</p></div>`;
-    showEl("properties-table-wrap");
-    return;
+function renderPropertyCards(data) {
+  // Group by property type
+  const groups = {};
+  for (const p of data) {
+    const t = p.type || "Unknown";
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(p);
   }
 
-  const thead = `<thead><tr>
-    <th>Type</th><th>Label</th><th style="text-align:right">Value</th><th>Unit</th><th>Sample(s)</th>
-  </tr></thead>`;
+  const container = document.getElementById("properties-cards");
+  container.innerHTML = "";
 
-  const tbody = filtered.map(p => {
-    const type  = escHtml(p.type);
-    const label = escHtml(p.label || p.type);
+  // Sort groups by name
+  const sortedTypes = Object.keys(groups).sort();
 
-    let valCell;
-    if (p.value_is_array) {
-      valCell = `<span style="color:var(--text-muted);font-size:11px">[array]</span>`;
-    } else if (p.value !== null && p.value !== undefined) {
-      const fmt = typeof p.value === "number" ? p.value.toPrecision(6) : escHtml(String(p.value));
-      valCell = `<span style="font-family:var(--mono);font-size:12px">${escHtml(fmt)}</span>`;
-    } else {
-      valCell = `—`;
+  for (const typeName of sortedTypes) {
+    const items = groups[typeName];
+    const scalarItems = items.filter(p => !p.value_is_array);
+    const arrayItems = items.filter(p => p.value_is_array);
+
+    // Friendly display name (split camelCase)
+    const displayName = typeName.replace(/([a-z])([A-Z])/g, "$1 $2");
+
+    // Unit from first item
+    const unit = items[0]?.unit || "";
+
+    // Summary stats for scalar values
+    let statsHtml = "";
+    if (scalarItems.length) {
+      const vals = scalarItems.map(p => p.value).filter(v => v !== null && v !== undefined && typeof v === "number");
+      if (vals.length) {
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        statsHtml = `<div style="display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text-muted)">
+          <span>min: <strong style="color:var(--text)">${min.toPrecision(4)}</strong></span>
+          <span>max: <strong style="color:var(--text)">${max.toPrecision(4)}</strong></span>
+          <span>mean: <strong style="color:var(--text)">${avg.toPrecision(4)}</strong></span>
+        </div>`;
+      }
     }
 
-    const unit = p.unit
-      ? (p.unit_uri
-          ? `<a href="${escAttr(p.unit_uri)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(p.unit)}</a>`
-          : `<span style="font-size:11px">${escHtml(p.unit)}</span>`)
-      : `—`;
+    const cardId = `prop-card-${typeName}`;
+    const tableId = `prop-table-${typeName}`;
 
-    const samples = p.sample_ids || [];
-    const sLinks = samples.length
-      ? samples.slice(0, 3).map(s => {
-          const short = s.split(":").pop().slice(0, 8);
-          return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
-        }).join(" ") + (samples.length > 3 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 3} more</span>` : "")
-      : `—`;
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.cssText = "margin-bottom:12px;cursor:pointer;transition:box-shadow 0.2s";
+    card.innerHTML = `
+      <div style="padding:16px 20px" onclick="togglePropertyTable('${tableId}', this)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:600">${escHtml(displayName)}</h3>
+            <span style="font-size:13px;color:var(--text-muted)">${scalarItems.length} scalar${arrayItems.length ? `, ${arrayItems.length} array` : ""} record${items.length !== 1 ? "s" : ""}${unit ? ` · ${escHtml(unit)}` : ""}</span>
+          </div>
+          <span class="prop-chevron" style="font-size:18px;color:var(--text-muted);transition:transform 0.2s">▶</span>
+        </div>
+        ${statsHtml}
+      </div>
+      <div id="${tableId}" style="display:none;border-top:1px solid var(--border);max-height:500px;overflow-y:auto"></div>
+    `;
+    container.appendChild(card);
+  }
 
-    return `<tr><td><span class="workflow-type-badge">${type}</span></td><td>${label}</td><td style="text-align:right">${valCell}</td><td>${unit}</td><td>${sLinks}</td></tr>`;
-  }).join("");
-
-  const wrap = document.getElementById("properties-table-wrap");
-  wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
-  showEl("properties-table-wrap");
+  showEl("properties-cards");
 }
 
-function filterProperties() {
-  if (_propertiesCache.length) renderPropertiesTable(_propertiesCache);
+function togglePropertyTable(tableId, headerEl) {
+  const tableDiv = document.getElementById(tableId);
+  const chevron = headerEl.querySelector(".prop-chevron");
+  const isOpen = tableDiv.style.display !== "none";
+
+  if (isOpen) {
+    tableDiv.style.display = "none";
+    if (chevron) chevron.style.transform = "rotate(0deg)";
+  } else {
+    // Build table on first open (lazy)
+    if (!tableDiv.innerHTML) {
+      const typeName = tableId.replace("prop-table-", "");
+      const items = _propertiesCache.filter(p => p.type === typeName);
+      buildPropertySubTable(tableDiv, items);
+    }
+    tableDiv.style.display = "block";
+    if (chevron) chevron.style.transform = "rotate(90deg)";
+  }
+}
+
+function buildPropertySubTable(container, items) {
+  const PAGE_SIZE = 50;
+  let shown = 0;
+
+  function renderBatch() {
+    const batch = items.slice(shown, shown + PAGE_SIZE);
+    const rows = batch.map(p => {
+      const label = escHtml(p.label || p.type);
+
+      let valCell;
+      if (p.value_is_array) {
+        valCell = `<span style="color:var(--text-muted);font-size:11px">[array]</span>`;
+      } else if (p.value !== null && p.value !== undefined) {
+        const fmt = typeof p.value === "number" ? p.value.toPrecision(6) : escHtml(String(p.value));
+        valCell = `<span style="font-family:var(--mono);font-size:12px">${escHtml(fmt)}</span>`;
+      } else {
+        valCell = `—`;
+      }
+
+      const samples = p.sample_ids || [];
+      const sLinks = samples.length
+        ? samples.slice(0, 2).map(s => {
+            const short = s.split(":").pop().slice(0, 8);
+            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
+          }).join(" ") + (samples.length > 2 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 2}</span>` : "")
+        : `—`;
+
+      return `<tr><td>${label}</td><td style="text-align:right">${valCell}</td><td>${sLinks}</td></tr>`;
+    }).join("");
+
+    shown += batch.length;
+
+    if (shown === batch.length) {
+      // First batch — create table structure
+      container.innerHTML = `<table style="font-size:13px">
+        <thead><tr><th>Label</th><th style="text-align:right">Value</th><th>Sample(s)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` + (shown < items.length ? `<div class="prop-load-more" style="padding:8px 16px;text-align:center">
+        <button class="btn btn-sm btn-outline" onclick="this.parentElement.previousElementSibling.querySelector('tbody').innerHTML += ''; loadMoreProperties(this)">
+          Show more (${items.length - shown} remaining)
+        </button>
+      </div>` : "");
+    } else {
+      // Append to existing tbody
+      const tbody = container.querySelector("tbody");
+      tbody.insertAdjacentHTML("beforeend", rows);
+    }
+
+    // Update or remove "load more" button
+    const loadMoreDiv = container.querySelector(".prop-load-more");
+    if (loadMoreDiv) {
+      if (shown >= items.length) {
+        loadMoreDiv.remove();
+      } else {
+        loadMoreDiv.querySelector("button").textContent = `Show more (${items.length - shown} remaining)`;
+      }
+    }
+  }
+
+  // Store renderBatch on the container for "load more"
+  container._renderBatch = renderBatch;
+  renderBatch();
+}
+
+function loadMoreProperties(btn) {
+  const container = btn.closest("[id^='prop-table-']");
+  if (container && container._renderBatch) {
+    container._renderBatch();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

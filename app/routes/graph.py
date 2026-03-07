@@ -18,13 +18,15 @@ router = APIRouter(prefix="/api/graph", tags=["graph"])
 SAMPLE_TYPE = "http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample"
 _SAMPLE_URI = URIRef(SAMPLE_TYPE)
 
-SAMPLE_LIMIT = 200  # cached on first load; force-graph stays interactive up to ~3-4k nodes
+SAMPLE_LIMIT = (
+    200  # cached on first load; force-graph stays interactive up to ~3-4k nodes
+)
 
 # Skip schema/ontology predicates — they link to class nodes, not data nodes
 _SCHEMA_PREFIXES = (
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",   # rdf:
-    "http://www.w3.org/2000/01/rdf-schema#",           # rdfs:
-    "http://www.w3.org/2002/07/owl#",                  # owl:
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",  # rdf:
+    "http://www.w3.org/2000/01/rdf-schema#",  # rdfs:
+    "http://www.w3.org/2002/07/owl#",  # owl:
 )
 
 # ── In-memory cache, invalidated whenever graph.db is updated ────────────────
@@ -119,7 +121,9 @@ def get_graph():
         if uri not in nodes_map:
             nodes_map[uri] = {
                 "id": uri,
-                "label": sample_labels.get(uri, _local(uri)) if is_sample else _local(uri),
+                "label": (
+                    sample_labels.get(uri, _local(uri)) if is_sample else _local(uri)
+                ),
                 "group": "sample" if is_sample else _group(uri),
             }
 
