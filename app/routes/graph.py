@@ -1,17 +1,9 @@
 """
 /api/graph  — returns nodes and links for the force-directed graph visualisation.
 
-Strategy: build the graph around *shared* nodes only.
-  1. samples → datasets  (dcterms:isPartOf)
-  2. samples → workflows  (prov:wasGeneratedBy  on the workflow side)
-  3. workflows → potentials / software / methods  (1 more hop)
-
-Per-sample private sub-nodes (SimulationCell, Material, ChemicalSpecies …)
-are skipped because they create isolated dumbbells — every sample has its own
-unique copy, so they never connect the graph together.
-
-Samples are subsampled to SAMPLE_LIMIT (evenly across datasets) so the
-visualisation stays responsive.
+Strategy: take N samples evenly and show ALL their triples (2 hops), skipping
+schema/ontology predicates (rdf:type, rdfs:*, owl:*) and literal objects.
+Shared nodes (datasets, potentials, software) naturally connect the clusters.
 """
 
 import os
@@ -26,28 +18,14 @@ router = APIRouter(prefix="/api/graph", tags=["graph"])
 SAMPLE_TYPE = "http://purls.helmholtz-metadaten.de/cmso/AtomicScaleSample"
 _SAMPLE_URI = URIRef(SAMPLE_TYPE)
 
-SAMPLE_LIMIT = 400  # max sample nodes shown
+SAMPLE_LIMIT = 80  # keep the graph readable
 
-# Predicates we want to follow (whitelist keeps the graph clean)
-_DCTERMS_IS_PART_OF = URIRef("http://purl.org/dc/terms/isPartOf")
-_PROV_WAS_GEN_BY = URIRef("http://www.w3.org/ns/prov#wasGeneratedBy")
-_PROV_DERIVED = URIRef("http://www.w3.org/ns/prov#wasDerivedFrom")
-_ASMO_HAS_POT = URIRef(
-    "http://purls.helmholtz-metadaten.de/asmo/hasInteratomicPotential"
+# Skip schema/ontology predicates — they link to class nodes, not data nodes
+_SCHEMA_PREFIXES = (
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",   # rdf:
+    "http://www.w3.org/2000/01/rdf-schema#",           # rdfs:
+    "http://www.w3.org/2002/07/owl#",                  # owl:
 )
-_ASMO_HAS_METHOD = URIRef(
-    "http://purls.helmholtz-metadaten.de/asmo/hasComputationalMethod"
-)
-_PROV_ASSOC = URIRef("http://www.w3.org/ns/prov#wasAssociatedWith")
-
-_BACKBONE_PREDS = {
-    _DCTERMS_IS_PART_OF,
-    _PROV_WAS_GEN_BY,
-    _PROV_DERIVED,
-    _ASMO_HAS_POT,
-    _ASMO_HAS_METHOD,
-    _PROV_ASSOC,
-}
 
 # ── In-memory cache, invalidated whenever graph.db is updated ────────────────
 _graph_cache: dict | None = None
@@ -58,6 +36,10 @@ def _local(uri: str) -> str:
     if "#" in uri:
         return uri.split("#")[-1]
     return uri.rstrip("/").split("/")[-1]
+
+
+def _is_schema(pred_uri: str) -> bool:
+    return any(pred_uri.startswith(p) for p in _SCHEMA_PREFIXES)
 
 
 def _group(uri: str) -> str:
@@ -75,7 +57,7 @@ def _group(uri: str) -> str:
     if "property" in u or "calculatedproperty" in u:
         return "property"
     if "dataset" in u or "zenodo" in u or "github" in u or "hdl.handle" in u:
-        return "other"
+        return "dataset"
     return "other"
 
 
@@ -116,7 +98,7 @@ def get_graph():
     except Exception:
         pass
 
-    # ── 3. Select a representative subset of samples ──────────────────────────
+    # ── 3. Select a representative subset of samples (evenly spaced) ──────────
     all_sample_list = sorted(sample_uris)
     if len(all_sample_list) > SAMPLE_LIMIT:
         step = len(all_sample_list) / SAMPLE_LIMIT
@@ -124,11 +106,10 @@ def get_graph():
     else:
         selected = set(all_sample_list)
 
-    # ── 4. Build backbone graph ────────────────────────────────────────────────
-    # Pass A: sample → dataset    (dcterms:isPartOf, always 1:1)
-    # Pass B: workflow → sample   (prov:wasGeneratedBy)
-    # Pass C: workflow → potential / method / software
-    # This guarantees every sample node appears connected to at least the dataset.
+    # ── 4. Walk all triples 2 hops from each sample ───────────────────────────
+    # Hop 1: all outgoing URI→URI edges from each sample (skip schema predicates)
+    # Hop 2: all outgoing URI→URI edges from nodes reached in hop 1
+    # Shared nodes (datasets, potentials, software) naturally link clusters.
 
     nodes_map: dict[str, dict] = {}
     links: list[dict] = []
@@ -138,10 +119,7 @@ def get_graph():
         if uri not in nodes_map:
             nodes_map[uri] = {
                 "id": uri,
-                "label": (
-                    sample_labels.get(uri, _local(uri)) if is_sample else _local(uri)
-                ),
-                "type": "sample" if is_sample else _group(uri),
+                "label": sample_labels.get(uri, _local(uri)) if is_sample else _local(uri),
                 "group": "sample" if is_sample else _group(uri),
             }
 
@@ -153,56 +131,40 @@ def get_graph():
         links.append({"source": s, "target": o, "label": pred_label})
 
     try:
-        # Pass A: sample → dataset
-        for s, _, o in g.triples((None, _DCTERMS_IS_PART_OF, None)):
-            if isinstance(o, Literal):
-                continue
-            ss, os_ = str(s), str(o)
-            if ss not in selected:
-                continue
-            _ensure_node(ss, is_sample=True)
-            _ensure_node(os_)
-            _add_edge(ss, "isPartOf", os_)
+        hop1_nodes: set[str] = set()
 
-        # Pass B: workflow → output sample  +  workflow → input sample
-        for s, _, wf in g.triples((None, _PROV_WAS_GEN_BY, None)):
-            if isinstance(s, Literal) or isinstance(wf, Literal):
-                continue
-            ss, wf_str = str(s), str(wf)
-            # Only include if the output sample is in our selected set
-            if ss not in selected:
-                continue
-            _ensure_node(ss, is_sample=True)
-            _ensure_node(wf_str)
-            _add_edge(ss, "wasGeneratedBy", wf_str)
-
-            # input samples (wasDerivedFrom on the sample)
-            for _, _, in_s in g.triples((URIRef(ss), _PROV_DERIVED, None)):
-                if isinstance(in_s, Literal):
+        # Hop 1: sample → all non-schema, non-literal neighbours
+        for uri in selected:
+            _ensure_node(uri, is_sample=True)
+            for _, pred, obj in g.triples((URIRef(uri), None, None)):
+                if isinstance(obj, Literal):
                     continue
-                in_str = str(in_s)
-                if in_str in selected:
-                    _ensure_node(in_str, is_sample=True)
-                    _add_edge(in_str, "derivedFrom→", ss)  # direction: input→output
+                pred_str = str(pred)
+                if _is_schema(pred_str):
+                    continue
+                obj_str = str(obj)
+                is_samp = obj_str in sample_uris
+                _ensure_node(obj_str, is_sample=is_samp)
+                _add_edge(uri, _local(pred_str), obj_str)
+                hop1_nodes.add(obj_str)
 
-            # Pass C: workflow → potential / method / software
-            for backbone_pred in (_ASMO_HAS_POT, _ASMO_HAS_METHOD, _PROV_ASSOC):
-                for _, _, obj in g.triples((URIRef(wf_str), backbone_pred, None)):
-                    if isinstance(obj, Literal):
-                        continue
-                    obj_str = str(obj)
-                    _ensure_node(obj_str)
-                    _add_edge(wf_str, _local(str(backbone_pred)), obj_str)
+        # Hop 2: from each intermediate node, follow its outgoing edges
+        for node_uri in hop1_nodes:
+            for _, pred, obj in g.triples((URIRef(node_uri), None, None)):
+                if isinstance(obj, Literal):
+                    continue
+                pred_str = str(pred)
+                if _is_schema(pred_str):
+                    continue
+                obj_str = str(obj)
+                is_samp = obj_str in sample_uris
+                _ensure_node(obj_str, is_sample=is_samp)
+                _add_edge(node_uri, _local(pred_str), obj_str)
 
     except Exception as e:
         return {"nodes": [], "links": [], "error": str(e)}
 
-    # ── 5. Ensure every selected sample has a node (even without any backbone edge) ──
-    # These will show as isolated only if they truly have no backbone connections
-    for uri in selected:
-        _ensure_node(uri, is_sample=True)
-
-    # ── 6. Compute degree ─────────────────────────────────────────────────────
+    # ── 5. Compute degree ─────────────────────────────────────────────────────
     degree_count: dict[str, int] = defaultdict(int)
     for link in links:
         degree_count[link["source"]] += 1
