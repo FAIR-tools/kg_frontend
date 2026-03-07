@@ -55,11 +55,11 @@ async function _ensureDatasetsLoaded() {
   if (_datasetsLoaded) return;
   try {
     const data = await apiFetch("/api/datasets");
-    _datasetsLoaded = true;
     for (const d of (data || [])) _datasetsMap[d.uri] = d;
+    _datasetsLoaded = true;  // only mark loaded on success
   } catch (_) {
-    // Non-fatal: dataset enrichment is best-effort
-    _datasetsLoaded = true;
+    // Non-fatal: dataset enrichment is best-effort; do NOT set _datasetsLoaded
+    // so the next call will retry
   }
 }
 
@@ -997,7 +997,11 @@ async function loadDatasets() {
   clearAlert("datasets-alert");
 
   try {
-    await _ensureDatasetsLoaded();
+    // Always do a fresh fetch for the Datasets tab so stale/empty cache is bypassed
+    const fetched = await apiFetch("/api/datasets");
+    _datasetsMap = {};
+    for (const d of (fetched || [])) _datasetsMap[d.uri] = d;
+    _datasetsLoaded = true;
     const data = Object.values(_datasetsMap);
     hideEl("datasets-loading");
 
