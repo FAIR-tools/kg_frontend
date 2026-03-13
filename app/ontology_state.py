@@ -20,7 +20,7 @@ _ONTOLOGY_URLS = {
     "asmo": "https://purls.helmholtz-metadaten.de/asmo/",
     "pldo": "https://raw.githubusercontent.com/OCDO/pldo/main/pldo.owl",
     "podo": "https://raw.githubusercontent.com/OCDO/podo/main/podo.owl",
-    "ldo":  "https://raw.githubusercontent.com/OCDO/ldo/main/ldo.owl",
+    "ldo": "https://raw.githubusercontent.com/OCDO/ldo/main/ldo.owl",
     "cdco": "https://raw.githubusercontent.com/OCDO/cdco/main/cdco.owl",
 }
 
@@ -31,7 +31,7 @@ def _read_ontology():
     pldo = parse_ontology(_ONTOLOGY_URLS["pldo"])
     podo = parse_ontology(_ONTOLOGY_URLS["podo"])
     asmo = parse_ontology(_ONTOLOGY_URLS["asmo"])
-    ldo  = parse_ontology(_ONTOLOGY_URLS["ldo"])
+    ldo = parse_ontology(_ONTOLOGY_URLS["ldo"])
     cdco = parse_ontology(_ONTOLOGY_URLS["cdco"])
 
     combo = cmso + cdco + pldo + podo + asmo + ldo

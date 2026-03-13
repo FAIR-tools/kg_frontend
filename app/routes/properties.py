@@ -75,7 +75,7 @@ def _build_properties_live():
         if type_str in _SKIP_TYPES or not type_str.startswith(_ASMO_NS):
             continue
 
-        pt = type_str[len(_ASMO_NS):]
+        pt = type_str[len(_ASMO_NS) :]
 
         label_lit = g.value(prop_node, RDFS.label)
         label = str(label_lit) if label_lit else pt
@@ -86,6 +86,7 @@ def _build_properties_live():
         if value_lit is not None:
             try:
                 import math
+
                 v = float(value_lit.toPython())
                 value = None if (math.isnan(v) or math.isinf(v)) else v
             except Exception:

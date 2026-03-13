@@ -5,6 +5,7 @@ import os
 
 from app.routes import (
     sparql,
+    sparql_protocol,
     guided,
     ontology,
     samples,
@@ -34,6 +35,7 @@ app.add_middleware(
 
 # API routes
 app.include_router(sparql.router)
+app.include_router(sparql_protocol.router)  # W3C SPARQL Protocol at /sparql
 app.include_router(guided.router)
 app.include_router(ontology.router)
 app.include_router(samples.router)
