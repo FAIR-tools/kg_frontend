@@ -9,8 +9,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"   # only accessible from localhost (nginx proxies it)
     volumes:
-      - /data:/data               # persistent GCP disk — survives restarts
-      - ${KG_DATA_DIR:-/home/atomrdf/kg_data}:/kg_data:ro  # YAML source files (read-only)
+      - /data:/data               # persistent host disk — survives restarts
+      - ${KG_DATA_DIR:-/home/opc/kg_data}:/kg_data:ro  # YAML source files (read-only)
     environment:
       - RELOAD_TOKEN=${RELOAD_TOKEN:-changeme}
       - UPLOAD_TOKEN=${UPLOAD_TOKEN:-}
@@ -18,8 +18,15 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-llama-3.1-8b-instant}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/samples"]
+      # NOT curl: it is not installed in the micromamba base image. `docker exec`
+      # also bypasses the micromamba entrypoint, so conda is not on PATH — hence
+      # the absolute interpreter path.
+      test:
+        - CMD
+        - /opt/conda/bin/python
+        - -c
+        - 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen("http://localhost:8000/api/samples", timeout=20).status == 200 else 1)'
       interval: 30s
-      timeout: 10s
+      timeout: 25s
       retries: 3
-      start_period: 60s
+      start_period: 180s   # a 1-OCPU host needs ~100s for imports + Oxigraph open

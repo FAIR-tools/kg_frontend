@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
 # ─────────────────────────────────────────────────────────────────
 # APP IMAGE — thin layer on top of the pre-built base image.
-# All heavy deps live in ghcr.io/fair-tools/kg_frontend_base.
+# All heavy deps live in kg_frontend_base, built locally via Dockerfile.base
+# (see BUILD.md). There is no registry push step any more.
 # Only app/ code is copied here, so rebuilds take ~5 seconds.
 # ─────────────────────────────────────────────────────────────────
-FROM ghcr.io/fair-tools/kg_frontend_base:latest
+FROM kg_frontend_base:latest
 
 USER root
 WORKDIR /app

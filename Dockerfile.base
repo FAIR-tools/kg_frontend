@@ -26,6 +26,11 @@ RUN micromamba install -y -n base -f /tmp/environment.yml && \
 # Activate base env for subsequent RUN commands
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
 
+# pyscal3 comes from pip, not conda: conda-forge has no linux-aarch64 build.
+# The PyPI release ships x86_64 wheels and an sdist, so this works on both
+# amd64 (wheel) and arm64 (compiled here against the build-essential/cmake above).
+RUN pip install --no-cache-dir "pyscal3==3.3.2"
+
 # Install pip-only packages:
 #   rdflib-sqlalchemy from git (no stable PyPI release yet)
 #   atomrdf + tools4rdf from PyPI (latest), --no-deps because all
