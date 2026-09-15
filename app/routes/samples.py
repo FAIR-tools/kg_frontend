@@ -166,6 +166,16 @@ def list_samples():
     return result
 
 
+_CMSO = "http://purls.helmholtz-metadaten.de/cmso/"
+
+
+def _has_simulation_cell(kg, sample_uri) -> bool:
+    """True if the sample carries a cmso:hasSimulationCell triple."""
+    from rdflib import URIRef
+
+    return kg.value(sample_uri, URIRef(f"{_CMSO}hasSimulationCell")) is not None
+
+
 @router.get("/xyz/{sample_id:path}")
 def get_sample_xyz(sample_id: str):
     """Return the sample structure as an XYZ string for 3Dmol.js rendering."""
@@ -179,10 +189,26 @@ def get_sample_xyz(sample_id: str):
     kg = get_kg()
     sample_uri = URIRef(sample_id)
 
+    # Most samples in the KG are property-only: the source deposit published
+    # energies and crystallography but no atom positions, so the sample has no
+    # cmso:hasSimulationCell. atomrdf still tries to build a SimulationCell and
+    # pydantic rejects the resulting angle=[None, None, None]. That is a missing
+    # structure, not a missing sample, so report it the same way as the
+    # to_structure() failure below rather than leaking the validation error.
+    if not _has_simulation_cell(kg, sample_uri):
+        raise HTTPException(
+            status_code=422,
+            detail="No atomic structure available for this sample "
+                   "(property-only dataset: no simulation cell was published).",
+        )
+
     try:
         sample = kg.get_sample_as_structure(sample_uri)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(
+            status_code=422,
+            detail=f"No atomic structure available for this sample ({exc})",
+        )
 
     if sample is None:
         raise HTTPException(status_code=404, detail="Sample not found")
