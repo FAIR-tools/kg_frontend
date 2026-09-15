@@ -94,7 +94,7 @@ def run_nlq(req: NLQRequest):
     """
     Translate a natural language question to a guided query and execute it.
     """
-    # 1. Import the LLM client (guarded so the app starts even if groq is not installed)
+    # 1. Import the LLM client (guarded so the app starts even if it cannot be configured)
     try:
         from app.llm_client import call_llm, LLM_PROVIDER, LLM_API_KEY, needs_api_key
     except ImportError as exc:
