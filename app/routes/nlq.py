@@ -54,13 +54,23 @@ def _build_system_prompt() -> str:
 Always use this source class:
   source_uri: {_PRIMARY_SOURCE_URI}
 
-Available destination properties (d=data, o=object):
+Available destination properties:
 {prop_lines}
+
+(d) = data property: holds a literal value. ONLY these may carry operator+value.
+(o) = object property: links to another entity. Use for retrieval only — NEVER
+      attach operator or value to one, the query will be rejected.
 
 Respond with ONLY a JSON object — no markdown, no explanation:
 {{"source_uri":"<uri>","destinations":[{{"uri":"<prop uri>","operator":"<== != > >= < <=  — omit if no filter>","value":"<string — omit if no filter>"}}]}}
 
-Rules: source_uri must be exact. Each destination uri must be exact. Omit operator+value for retrieval-only. Numeric values as strings.
+Rules:
+- source_uri must be exact; each destination uri must be exact.
+- Omit operator+value for retrieval-only.
+- Numeric values as strings.
+- operator+value are allowed ONLY on (d) properties. If the question filters on
+  something reachable only through an (o) property, return the (d) property at
+  the end of that path instead.
 
 Examples:
 Q: samples with 4 atoms → {{"source_uri":"{BASE}AtomicScaleSample","destinations":[{{"uri":"{BASE}hasNumberOfAtoms","operator":"==","value":"4"}}]}}

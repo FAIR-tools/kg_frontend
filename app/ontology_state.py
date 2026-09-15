@@ -54,7 +54,46 @@ def _read_ontology():
     combo.add_path(("prov:SoftwareAgent", "rdfs:label", "string"))
     combo.add_path(("asmo:InteratomicPotential", "rdfs:label", "string"))
 
+    _normalise_purl_scheme(combo)
     return combo
+
+
+# The graph stores CDOS/CMSO/ASMO IRIs with the http scheme, but the published
+# OWL files declare several of them as https (asmo, pldo, podo, part of cdco;
+# cmso and ldo are http). tools4rdf builds SPARQL from the ontology's own IRIs,
+# so an https term produces a query that matches nothing and returns ZERO ROWS
+# WITHOUT ERROR -- in the guided-query UI and in natural-language queries alike.
+#
+# Rewrite the scheme once at load so every term matches the data.
+_PURL_HTTPS = "https://purls.helmholtz-metadaten.de"
+_PURL_HTTP = "http://purls.helmholtz-metadaten.de"
+
+
+def _normalise_purl_scheme(combo) -> int:
+    """Force purls.helmholtz-metadaten.de terms to http. Returns how many changed."""
+    changed = 0
+    for ns_key in dir(combo.terms):
+        if ns_key.startswith("_"):
+            continue
+        try:
+            ns_obj = getattr(combo.terms, ns_key)
+        except Exception:
+            continue
+        for term_key in dir(ns_obj):
+            if term_key.startswith("_"):
+                continue
+            try:
+                term = getattr(ns_obj, term_key)
+                uri = str(getattr(term, "uri", ""))
+            except Exception:
+                continue
+            if uri.startswith(_PURL_HTTPS):
+                try:
+                    term.uri = _PURL_HTTP + uri[len(_PURL_HTTPS):]
+                    changed += 1
+                except Exception:
+                    pass
+    return changed
 
 
 def get_onto():
