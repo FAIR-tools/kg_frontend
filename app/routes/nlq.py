@@ -86,17 +86,16 @@ def run_nlq(req: NLQRequest):
     """
     # 1. Import the LLM client (guarded so the app starts even if groq is not installed)
     try:
-        from app.llm_client import call_llm, LLM_PROVIDER, LLM_API_KEY
+        from app.llm_client import call_llm, LLM_PROVIDER, LLM_API_KEY, needs_api_key
     except ImportError as exc:
         raise HTTPException(status_code=503, detail=f"LLM client unavailable: {exc}")
 
-    if LLM_PROVIDER == "groq" and not LLM_API_KEY:
+    if needs_api_key() and not LLM_API_KEY:
         raise HTTPException(
             status_code=503,
             detail=(
-                "LLM_API_KEY is not configured. "
-                "Set it in docker-compose.yml and redeploy, "
-                "or get a free key at https://console.groq.com"
+                f"LLM_API_KEY is not configured for provider '{LLM_PROVIDER}'. "
+                "Set it in the .env on the host and restart the container."
             ),
         )
 

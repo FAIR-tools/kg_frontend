@@ -14,9 +14,10 @@ services:
     environment:
       - RELOAD_TOKEN=${RELOAD_TOKEN:-changeme}
       - UPLOAD_TOKEN=${UPLOAD_TOKEN:-}
-      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
+      - LLM_PROVIDER=${LLM_PROVIDER:-saia}
       - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-llama-3.1-8b-instant}
+      - LLM_MODEL=${LLM_MODEL:-meta-llama-3.1-8b-instruct}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
     healthcheck:
       # NOT curl: it is not installed in the micromamba base image. `docker exec`
       # also bypasses the micromamba entrypoint, so conda is not on PATH — hence
