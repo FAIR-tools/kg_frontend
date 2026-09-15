@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260915d" />
+  <link rel="stylesheet" href="style.css?v=20260915e" />
 </head>
 <body>
 
@@ -42,13 +42,13 @@
 
   <!-- ───────────── OVERVIEW TAB ───────────── -->
   <div class="tab-panel active" id="tab-overview">
-    <div class="panel-header">
-      <h2>Overview</h2>
-      <p>What this knowledge graph contains — explore it directly below, then its size,
-         the ontology classes that are instantiated, the vocabularies its predicates
-         come from, and how the samples are distributed across the published datasets.</p>
-    </div>
-    <h3 class="ov-section">Knowledge graph <span class="ov-sub">force-directed view — click a sample node to inspect it</span></h3>
+    <div id="overview-alert"></div>
+    <div id="overview-loading" class="empty"><div class="spinner"></div></div>
+
+    <!-- Headline counts. Lives outside #overview-body so the numbers land above
+         the graph while the breakdown panels below it fill in together. -->
+    <div class="stat-grid" id="ov-headline"></div>
+
     <div class="graph-legend">
       <span class="legend-item" data-group="sample">Sample</span>
       <span class="legend-item" data-group="structure">Structure</span>
@@ -72,11 +72,7 @@
       <div class="detail-grid" id="graph-detail-grid"></div>
     </div>
 
-    <h3 class="ov-section">What is in the graph</h3>
-    <div id="overview-alert"></div>
-    <div id="overview-loading" class="empty"><div class="spinner"></div></div>
     <div id="overview-body" style="display:none">
-      <div class="stat-grid" id="ov-headline"></div>
       <div class="ov-cols">
         <div class="card ov-panel">
           <h3>Instances per class <span class="ov-sub" id="ov-classes-sub"></span></h3>
@@ -364,6 +360,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260915d"></script>
+<script src="app.js?v=20260915e"></script>
 </body>
 </html>
