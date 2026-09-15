@@ -3,6 +3,10 @@
 There is no CI. The image is built by hand on the host that runs it, which is why
 the build must work from a clean clone.
 
+This page covers building and running the app. For standing the whole service up
+on a fresh host -- packages, firewall, SELinux, nginx, TLS, DNS -- see
+[DEPLOY.md](DEPLOY.md).
+
 ## Host
 
 `matkg.pyscal.org` — Oracle Cloud `VM.Standard.A1.Flex` (**aarch64**), Oracle Linux 9,
@@ -59,5 +63,23 @@ not installed in the micromamba image.
 
 ## Data
 
-The graph lives on the host at `/data` (`oxigraph.db`, `rdf_structure_store`, `cache`)
-and is not in this repo. Push a rebuilt graph with `kg_data/push_data.sh`.
+The graph lives on the host at `/data` (`oxigraph.db`, `rdf_structure_store`,
+`cache`) and is not in this repo. It is built by
+`atomRDF_usecases_new/build_combined_kg.py` and published in three steps:
+
+```bash
+python build_combined_kg.py                # build
+python ~/kg_data/rewrite_iris.py \
+    --src combined_KG/oxigraph.db --in-place   # mint dereferenceable IRIs
+cd ~/kg_data && ./push_data.sh             # upload, swap, reload
+```
+
+The middle step is not optional. atomrdf mints identifiers as `sample:<uuid>`,
+`property:<uuid>` and so on -- unique, but not resolvable by anything, which
+fails FAIR A1. `rewrite_iris.py` turns them into
+`https://atomkg.pyscal.org/id/<scheme>/<local-id>`, which `app/routes/resolve.py`
+then serves as either an HTML entity page or RDF, by content negotiation.
+
+Its `--base` must match `CANONICAL_BASE` in `app/routes/resolve.py` and the
+canonical `server_name` in `nginx/atomrdf.conf`. Those three move together if the
+service ever changes hostname, and the graph must then be rewritten and re-pushed.
