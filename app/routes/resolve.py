@@ -7,8 +7,13 @@ them from merely-unique identifiers into Linked Data: FAIR A1 asks that an
 identifier be retrievable over a standard protocol.
 
 Content negotiation:
-  text/turtle, application/n-triples, application/ld+json  -> RDF description
-  anything else (browsers)                                 -> redirect to the UI
+  explicit text/html (i.e. a browser)   -> redirect into the UI
+  an explicit RDF media type            -> that serialisation
+  */* or no Accept at all               -> Turtle
+
+The last rule matters: a bare `curl <iri>` sends `Accept: */*`, which expresses no
+preference. Redirecting that to HTML would make the IRI useless to every scripted
+client. Browsers always name text/html explicitly, so they are still served the UI.
 
 The description is the concise bounded description of the subject: every triple
 where it is the subject, plus every triple where it is the object, so a consumer
@@ -20,6 +25,7 @@ so that one entity has exactly one IRI.
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import Response, RedirectResponse
+from urllib.parse import quote
 
 from app.graph_state import get_kg
 
@@ -45,27 +51,42 @@ _RDF_TYPES = {
 
 
 def _negotiate(accept: str):
-    """Return (rdflib_format, content_type) or None when the client wants HTML."""
-    best, best_q, best_ct = None, -1.0, None
-    for part in (accept or "").split(","):
+    """Pick a serialisation, or None when the client explicitly asked for HTML.
+
+    Returns (rdflib_format, content_type), or None for "send them to the UI".
+    Defaults to Turtle: a client that says */* (or nothing) is not a browser.
+    """
+    accept = (accept or "").strip()
+    if not accept:
+        return _RDF_TYPES["text/turtle"], "text/turtle"
+
+    html_q, rdf_best, rdf_q, rdf_ct = -1.0, None, -1.0, None
+    for part in accept.split(","):
         part = part.strip()
         if not part:
             continue
         media, _, params = part.partition(";")
         media = media.strip().lower()
         q = 1.0
-        for p in params.split(";"):
-            p = p.strip()
-            if p.startswith("q="):
+        for prm in params.split(";"):
+            prm = prm.strip()
+            if prm.startswith("q="):
                 try:
-                    q = float(p[2:])
+                    q = float(prm[2:])
                 except ValueError:
                     pass
-        if media in ("text/html", "application/xhtml+xml") and q > best_q:
-            best, best_q, best_ct = None, q, None
-        elif media in _RDF_TYPES and q > best_q:
-            best, best_q, best_ct = _RDF_TYPES[media], q, media
-    return (best, best_ct) if best else None
+        if media in ("text/html", "application/xhtml+xml"):
+            html_q = max(html_q, q)
+        elif media in _RDF_TYPES and q > rdf_q:
+            rdf_best, rdf_q, rdf_ct = _RDF_TYPES[media], q, media
+
+    # An explicit, at-least-as-preferred text/html means a browser.
+    if html_q >= 0 and html_q >= rdf_q:
+        return None
+    if rdf_best:
+        return rdf_best, rdf_ct
+    # Only */* (or unrecognised types): treat as a machine client.
+    return _RDF_TYPES["text/turtle"], "text/turtle"
 
 
 @router.get("/{scheme}/{local_id:path}")
@@ -94,12 +115,24 @@ def resolve(scheme: str, local_id: str, request: Request):
     if n == 0:
         raise HTTPException(status_code=404, detail=f"No such entity: {uri}")
 
+    # Point machines at the RDF even when a human followed the link, so the
+    # HTML branch stays discoverable rather than being a dead end.
+    link_header = f'<{uri}>; rel="canonical", <{uri}>; rel="alternate"; type="text/turtle"'
+
     chosen = _negotiate(request.headers.get("accept", ""))
     if chosen is None:
         # Browser: hand off to the UI. Only samples have a detail view today.
-        if scheme == "sample":
-            return RedirectResponse(url=f"/?sample={uri}", status_code=303)
-        return RedirectResponse(url=f"/sparql?query=DESCRIBE+%3C{uri}%3E", status_code=303)
+        target = (
+            f"/?sample={quote(str(uri), safe='')}"
+            if scheme == "sample"
+            else f"/sparql?query={quote(f'DESCRIBE <{uri}>', safe='')}"
+        )
+        return RedirectResponse(url=target, status_code=303,
+                                headers={"Link": link_header})
 
     fmt, content_type = chosen
-    return Response(content=out.serialize(format=fmt), media_type=content_type)
+    return Response(
+        content=out.serialize(format=fmt),
+        media_type=content_type,
+        headers={"Link": link_header, "Vary": "Accept"},
+    )

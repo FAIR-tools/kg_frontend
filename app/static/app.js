@@ -1224,6 +1224,32 @@ try {
   }
 } catch(_) {}
 
+// ── Deep links ────────────────────────────────────────────
+// Resolving an instance IRI in a browser lands here as /?sample=<iri>
+// (see app/routes/resolve.py). Open that sample's detail view directly,
+// otherwise the IRI just dumps the visitor on the front page.
+async function _openDeepLink() {
+  let sampleId;
+  try {
+    sampleId = new URLSearchParams(window.location.search).get("sample");
+  } catch (_) {
+    return;
+  }
+  if (!sampleId) return;
+
+  // Switch to the Samples tab so the detail panel is visible.
+  const btn = document.querySelector('[data-tab="samples"]');
+  if (btn) btn.click();
+
+  // The list populates the name and the dataset enrichment, but the detail
+  // view works without it, so a slow or failed load must not block the link.
+  try { await loadSamples(); } catch (_) {}
+
+  const cached = _samplesCache.find(s => s.id === sampleId);
+  openSampleDetail(sampleId, cached?.name || _shortId(sampleId));
+}
+
 // ── Init ──────────────────────────────────────────────────
 _loadSampleCount();
 loadGraph();     // pre-load in background so Graph tab is instant
+_openDeepLink();
