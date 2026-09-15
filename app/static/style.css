@@ -746,3 +746,11 @@ footer .sep { opacity: 0.3; }
 }
 .dot-a { background: var(--accent); }
 .dot-b { background: var(--surface2); border: 1px solid var(--border); }
+
+/* Section heading inside a tab that holds more than one thing. */
+.ov-section {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.ov-section + .graph-legend { margin-top: 0; }

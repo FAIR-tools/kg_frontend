@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260915c" />
+  <link rel="stylesheet" href="style.css?v=20260915d" />
 </head>
 <body>
 
@@ -30,7 +30,6 @@
 
 <nav id="main-nav">
   <button class="active" data-tab="overview">Overview</button>
-  <button data-tab="graph">Graph</button>
   <button data-tab="samples">Samples</button>
   <button data-tab="workflows">Workflows</button>
   <button data-tab="properties">Properties</button>
@@ -45,10 +44,35 @@
   <div class="tab-panel active" id="tab-overview">
     <div class="panel-header">
       <h2>Overview</h2>
-      <p>What this knowledge graph contains: its size, the ontology classes that are
-         instantiated, the vocabularies its predicates come from, and how the samples
-         are distributed across the published datasets.</p>
+      <p>What this knowledge graph contains — explore it directly below, then its size,
+         the ontology classes that are instantiated, the vocabularies its predicates
+         come from, and how the samples are distributed across the published datasets.</p>
     </div>
+    <h3 class="ov-section">Knowledge graph <span class="ov-sub">force-directed view — click a sample node to inspect it</span></h3>
+    <div class="graph-legend">
+      <span class="legend-item" data-group="sample">Sample</span>
+      <span class="legend-item" data-group="structure">Structure</span>
+      <span class="legend-item" data-group="element">Element</span>
+      <span class="legend-item" data-group="material">Material</span>
+      <span class="legend-item" data-group="calculation">Calculation</span>
+      <span class="legend-item" data-group="potential">Potential</span>
+      <span class="legend-item" data-group="property">Property</span>
+      <span class="legend-item" data-group="other">Other</span>
+    </div>
+    <div id="graph-alert"></div>
+    <div id="graph-container"></div>
+    <div class="detail-panel" id="graph-sample-detail">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 id="graph-detail-title">Sample detail</h3>
+        <div style="display:flex;gap:8px">
+          <button id="graph-detail-view-btn" class="btn btn-sm" style="display:none" onclick="">🔬 View Structure</button>
+          <button class="btn btn-outline btn-sm" onclick="closeGraphDetail()">&#x2715; Close</button>
+        </div>
+      </div>
+      <div class="detail-grid" id="graph-detail-grid"></div>
+    </div>
+
+    <h3 class="ov-section">What is in the graph</h3>
     <div id="overview-alert"></div>
     <div id="overview-loading" class="empty"><div class="spinner"></div></div>
     <div id="overview-body" style="display:none">
@@ -77,36 +101,6 @@
         <h3>Structure coverage</h3>
         <div id="ov-structures"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- ───────────── GRAPH TAB ───────────── -->
-  <div class="tab-panel" id="tab-graph">
-    <div class="panel-header">
-      <h2>Knowledge Graph</h2>
-      <p>Force-directed visualisation of all samples and their relationships. Click a sample node to inspect its details.</p>
-    </div>
-    <div class="graph-legend">
-      <span class="legend-item" data-group="sample">Sample</span>
-      <span class="legend-item" data-group="structure">Structure</span>
-      <span class="legend-item" data-group="element">Element</span>
-      <span class="legend-item" data-group="material">Material</span>
-      <span class="legend-item" data-group="calculation">Calculation</span>
-      <span class="legend-item" data-group="potential">Potential</span>
-      <span class="legend-item" data-group="property">Property</span>
-      <span class="legend-item" data-group="other">Other</span>
-    </div>
-    <div id="graph-alert"></div>
-    <div id="graph-container"></div>
-    <div class="detail-panel" id="graph-sample-detail">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <h3 id="graph-detail-title">Sample detail</h3>
-        <div style="display:flex;gap:8px">
-          <button id="graph-detail-view-btn" class="btn btn-sm" style="display:none" onclick="">🔬 View Structure</button>
-          <button class="btn btn-outline btn-sm" onclick="closeGraphDetail()">&#x2715; Close</button>
-        </div>
-      </div>
-      <div class="detail-grid" id="graph-detail-grid"></div>
     </div>
   </div>
 
@@ -370,6 +364,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260915c"></script>
+<script src="app.js?v=20260915d"></script>
 </body>
 </html>

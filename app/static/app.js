@@ -14,7 +14,6 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     document.getElementById(`tab-${tab}`).classList.add("active");
     if (tab === "overview")   loadOverview();
     if (tab === "samples")    loadSamples();
-    if (tab === "graph")      loadGraph();
     if (tab === "workflows")  loadWorkflows();
     if (tab === "properties") loadProperties();
     if (tab === "datasets")   loadDatasets();
@@ -903,9 +902,14 @@ async function loadGraph() {
     }, { capture: true, passive: true });
 
   } catch (e) {
-    _graphLoaded = false; // allow retry on next tab click
+    // The graph no longer has a tab of its own to re-enter, so the retry has to
+    // be offered here.
+    _graphLoaded = false;
     const retryMsg = e.message.startsWith("HTTP 5") ? " The app may still be starting — please try again in a moment." : "";
-    container.innerHTML = `<div class="alert alert-error" style="margin:16px">Failed to load graph: ${escHtml(e.message)}.${retryMsg}</div>`;
+    container.innerHTML = `<div class="alert alert-error" style="margin:16px">
+      Failed to load graph: ${escHtml(e.message)}.${retryMsg}
+      <button class="btn btn-sm btn-outline" style="margin-left:10px" onclick="loadGraph()">Retry</button>
+    </div>`;
   }
 }
 
@@ -1571,7 +1575,9 @@ async function _openDeepLink() {
 }
 
 // ── Init ──────────────────────────────────────────────────
+// Both halves of the landing tab. The graph is measured from its container's
+// width, so it has to be laid out — which it is, Overview being the active tab.
 _loadSampleCount();
-loadOverview();  // the landing tab
-loadGraph();     // pre-load in background so Graph tab is instant
+loadOverview();
+loadGraph();
 _openDeepLink();
