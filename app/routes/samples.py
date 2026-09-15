@@ -166,6 +166,24 @@ def list_samples():
     return result
 
 
+def _sample_as_structure(kg, sample_uri):
+    """Load a sample by IRI, bypassing KnowledgeGraph.get_sample_as_structure.
+
+    That wrapper normalises its argument with
+    ``sample_id if sample_id.startswith("sample:") else f"sample:{sample_id}"``.
+    rdflib's URIRef subclasses str, so a dereferenceable IRI such as
+    https://atomkg.pyscal.org/id/sample/<uuid> does NOT start with "sample:" and
+    would be mangled into "sample:https://atomkg.pyscal.org/...". Calling
+    AtomicScaleSample.from_graph directly is exactly what the wrapper does after
+    normalising, and it accepts the IRI unchanged.
+
+    Worth removing once atomrdf stops assuming the short form upstream.
+    """
+    from atomrdf.datamodels.structure import AtomicScaleSample
+
+    return AtomicScaleSample.from_graph(kg, sample_uri)
+
+
 _CMSO = "http://purls.helmholtz-metadaten.de/cmso/"
 
 
@@ -203,7 +221,7 @@ def get_sample_xyz(sample_id: str):
         )
 
     try:
-        sample = kg.get_sample_as_structure(sample_uri)
+        sample = _sample_as_structure(kg, sample_uri)
     except Exception as exc:
         raise HTTPException(
             status_code=422,
@@ -251,7 +269,7 @@ def get_sample(sample_id: str):
     sample = None
     deserialize_error = None
     try:
-        sample = kg.get_sample_as_structure(sample_uri)
+        sample = _sample_as_structure(kg, sample_uri)
     except Exception as exc:
         deserialize_error = str(exc)
 

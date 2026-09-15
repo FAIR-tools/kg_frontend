@@ -33,7 +33,14 @@ document.querySelectorAll(".subtabs button").forEach(btn => {
 });
 
 const _SAMPLE_URI_PREFIX = "http://purls.helmholtz-metadaten.de/cmso/sample_";
-const _SAMPLE_URI_PATTERN = /^sample:/;
+// Samples are identified by dereferenceable IRIs (…/id/sample/<uuid>); the bare
+// "sample:<uuid>" form is still matched so older exports keep rendering.
+// Local part of an identifier, for either the minted IRI form
+// (…/id/sample/<uuid>) or the legacy short form (sample:<uuid>).
+function _shortId(uri) {
+  return String(uri).split('/').pop().split(':').pop();
+}
+const _SAMPLE_URI_PATTERN = /^(sample:|https?:\/\/[^/]+\/id\/sample\/)/;
 
 async function _loadSampleCount() {
   try {
@@ -303,7 +310,7 @@ function _renderFilteredSamples() {
   const tbody = filtered.map((s, i) => {
     const formula = escHtml(s.formula || s.name || "—");
     const name    = escHtml(s.name || "—");
-    const shortId = escHtml(s.id.split(':').pop().split('/').pop().slice(0, 8));
+    const shortId = escHtml(_shortId(s.id).slice(0, 8));
     const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬</button>`;
     return `<tr style="cursor:pointer" data-sid="${escAttr(s.id)}" data-sname="${escAttr(s.name||'')}">` +
       `<td><span class="sample-formula">${formula}</span></td>` +
@@ -817,7 +824,7 @@ function buildTableDOM(columns, rows) {
         const btn = document.createElement("button");
         btn.className = "btn btn-sm btn-outline";
         btn.textContent = "🔬 View";
-        btn.onclick = e => { e.stopPropagation(); openStructureViewer(sampleUri, sampleUri.split(":").pop()); };
+        btn.onclick = e => { e.stopPropagation(); openStructureViewer(sampleUri, _shortId(sampleUri)); };
         td.appendChild(btn);
       }
       tr.appendChild(td);
@@ -855,7 +862,7 @@ async function loadWorkflows() {
       <th>ID</th><th>Type</th><th>Method</th><th>Software / DOI</th><th>Potential</th><th>Output Samples</th>
     </tr></thead>`;
     const tbody = wfs.map(w => {
-      const idShort = escHtml(w.id.split(':').pop().slice(0, 8));
+      const idShort = escHtml(_shortId(w.id).slice(0, 8));
       const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${idShort}…</span>`;
       const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
       const method = w.method ? escHtml(w.method) : '—';
@@ -869,8 +876,8 @@ async function loadWorkflows() {
       const samples = w.output_samples || w.samples || [];
       const sLinks = samples.length
         ? samples.map(s => {
-            const short = s.split(':').pop().slice(0, 8);
-            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
+            const short = _shortId(s).slice(0, 8);
+            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(_shortId(s))}')">🔬 ${escHtml(short)}</button>`;
           }).join(" ")
         : '—';
       return `<tr><td>${id}</td><td>${badge}</td><td>${method}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
@@ -1029,8 +1036,8 @@ function buildPropertySubTable(container, items) {
       const samples = p.sample_ids || [];
       const sLinks = samples.length
         ? samples.slice(0, 2).map(s => {
-            const short = s.split(":").pop().slice(0, 8);
-            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(s.split(':').pop())}')">🔬 ${escHtml(short)}</button>`;
+            const short = _shortId(s).slice(0, 8);
+            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(_shortId(s))}')">🔬 ${escHtml(short)}</button>`;
           }).join(" ") + (samples.length > 2 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 2}</span>` : "")
         : `—`;
 
