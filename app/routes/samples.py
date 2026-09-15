@@ -104,12 +104,95 @@ def _safe_serialize(obj, depth=0):
         return None
 
 
+# ── Memoised access ─────────────────────────────────────────────────────────
+# 55k+ records. Load once and derive the element histogram from it, rather than
+# re-reading the cache file (16.5 MB) on every request.
+
+_records: list | None = None
+_summary: dict | None = None
+
+
+def invalidate() -> None:
+    """Drop the memoised records/summary. Called after the KG is reloaded."""
+    global _records, _summary
+    _records = None
+    _summary = None
+
+
+def _load() -> list:
+    global _records
+    if _records is None:
+        _records = read_cache("samples.json") or _build_samples_live()
+    return _records
+
+
+def _get_summary() -> dict:
+    """Totals and the element histogram that drives the periodic table."""
+    global _summary
+    if _summary is None:
+        counts: dict[str, int] = {}
+        for r in _load():
+            for el in r.get("elements") or []:
+                counts[el] = counts.get(el, 0) + 1
+        _summary = {
+            "total": len(_load()),
+            "elements": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
+        }
+    return _summary
+
+
+def _matches(rec: dict, elements: list[str], q: str) -> bool:
+    if elements:
+        have = set(rec.get("elements") or [])
+        if not all(el in have for el in elements):
+            return False
+    if q:
+        if q in str(rec.get("name", "")).lower():
+            return True
+        if q in str(rec.get("formula", "")).lower():
+            return True
+        return any(str(el).lower().startswith(q) for el in rec.get("elements") or [])
+    return True
+
+
+@router.get("/summary")
+def samples_summary():
+    """Sample count and per-element histogram — what the periodic table needs."""
+    return _get_summary()
+
+
 @router.get("")
-def list_samples():
-    """Return a list of all samples in the graph. Served from cache when available."""
-    cached = read_cache("samples.json")
-    if cached is not None:
-        return cached
+def list_samples(
+    elements: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    """Paginated samples, filtered server-side.
+
+    ``elements`` is a comma-separated list; a sample must contain ALL of them,
+    matching what the periodic-table selector meant when it filtered in the
+    browser. Filtering has to happen here now that the client only holds a page.
+    """
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    els = [e.strip() for e in (elements or "").split(",") if e.strip()]
+    q = (search or "").strip().lower()
+
+    records = _load()
+    if els or q:
+        records = [r for r in records if _matches(r, els, q)]
+
+    return {
+        "items": records[offset:offset + limit],
+        "total": len(records),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def _build_samples_live():
+    """Live query — used when the cache file is absent."""
 
     kg = get_kg()
     ids = kg.sample_ids  # list of URIRef

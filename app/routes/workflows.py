@@ -134,12 +134,28 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     }
 
 
-@router.get("")
-def list_workflows():
-    """Return all workflow instances with metadata. Served from cache when available."""
+# ── Memoised access ─────────────────────────────────────────────────────────
+# The workflow list was 29 MB -- the largest response the portal served -- and
+# the tab rendered every row at once. Load once, serve a page at a time.
+
+_records: list | None = None
+
+
+def invalidate() -> None:
+    """Drop the memoised record list. Called after the KG is reloaded."""
+    global _records
+    _records = None
+
+
+def _load() -> list:
+    global _records
+    if _records is not None:
+        return _records
+
     cached = read_cache("workflows.json")
     if cached is not None:
-        return cached
+        _records = cached.get("workflows", cached) if isinstance(cached, dict) else cached
+        return _records
 
     kg = get_kg()
     g = kg.graph  # rdflib ConjunctiveGraph
@@ -153,7 +169,44 @@ def list_workflows():
             records.append(_build_record(g, wf_uri, type_label, str(type_ref)))
 
     records.sort(key=lambda r: r["id"])
-    return {"workflows": records, "total": len(records)}
+    _records = records
+    return _records
+
+
+@router.get("")
+def list_workflows(
+    search: str | None = None,
+    type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    """Paginated workflows. Returns {workflows, total, limit, offset}.
+
+    The ``workflows`` key is kept so existing consumers keep working; what
+    changed is that it now holds a page rather than all of them.
+    """
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+
+    records = _load()
+    if type:
+        records = [r for r in records if r.get("type") == type]
+    if search:
+        q = search.lower()
+        records = [
+            r for r in records
+            if q in str(r.get("id", "")).lower()
+            or q in str(r.get("method", "") or "").lower()
+            or q in str(r.get("potential", "") or "").lower()
+            or q in str(r.get("software", "") or "").lower()
+        ]
+
+    return {
+        "workflows": records[offset:offset + limit],
+        "total": len(records),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/{workflow_id:path}")

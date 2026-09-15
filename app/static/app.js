@@ -44,16 +44,20 @@ const _SAMPLE_URI_PATTERN = /^(sample:|https?:\/\/[^/]+\/id\/sample\/)/;
 
 async function _loadSampleCount() {
   try {
-    const data = await apiFetch("/api/samples");
+    const data = await apiFetch("/api/samples/summary");
     const el = document.getElementById("hdr-sample-count");
-    if (el) el.textContent = data.length;
+    if (el) el.textContent = data.total;
   } catch (_) {}
 }
 
 // ═══════════════════════════════════════════════════════════
 // SAMPLES  —  Periodic Table Explorer
 // ═══════════════════════════════════════════════════════════
-let _samplesCache = [];
+let _samplesCache = [];             // the CURRENT PAGE only, not every sample
+let _sampleSummary = { total: 0, elements: {} };  // drives the periodic table
+let _samplesTotal = 0;              // rows matching the active filter
+let _samplesOffset = 0;
+const SAMPLES_PAGE_SIZE = 100;
 let _selectedElements = new Set();  // elements the user has clicked
 let _datasetsMap = {};              // dataset_uri → dataset object (loaded lazily)
 let _datasetsLoaded = false;
@@ -157,20 +161,21 @@ async function loadSamples() {
   _ensureDatasetsLoaded();
 
   try {
-    const data = await apiFetch("/api/samples");
-    _samplesCache = data;
-    document.getElementById("hdr-sample-count").textContent = data.length;
+    // The periodic table needs per-element counts over the whole graph; the
+    // table below it needs one page. Two requests, neither of them large.
+    _sampleSummary = await apiFetch("/api/samples/summary");
+    document.getElementById("hdr-sample-count").textContent = _sampleSummary.total;
     hideEl("samples-loading");
     hideEl("ptable-loading");
 
-    if (!data.length) {
+    if (!_sampleSummary.total) {
       showEl("samples-empty");
       return;
     }
 
     _renderPeriodicTable();
     showEl("ptable-wrap");
-    _renderFilteredSamples();
+    await _fetchSamplePage(0);
     showEl("samples-table-wrap");
   } catch (e) {
     hideEl("samples-loading");
@@ -179,14 +184,39 @@ async function loadSamples() {
   }
 }
 
-function _renderPeriodicTable() {
-  // Build element → count map
-  const countMap = {};
-  for (const s of _samplesCache) {
-    for (const el of (s.elements || [])) {
-      countMap[el] = (countMap[el] || 0) + 1;
-    }
+// Build the query for the active filters. Filtering happens server-side now:
+// the browser only holds one page, so it cannot filter what it has not seen.
+function _sampleQuery(offset) {
+  const p = new URLSearchParams();
+  const textQ = (document.getElementById("elem-text-filter")?.value || "").trim();
+  if (textQ) p.set("search", textQ);
+  if (_selectedElements.size) p.set("elements", [..._selectedElements].join(","));
+  p.set("limit", SAMPLES_PAGE_SIZE);
+  p.set("offset", offset);
+  return p.toString();
+}
+
+async function _fetchSamplePage(offset, append = false) {
+  const page = await apiFetch(`/api/samples?${_sampleQuery(offset)}`);
+  _samplesCache = append ? _samplesCache.concat(page.items) : page.items;
+  _samplesTotal = page.total;
+  _samplesOffset = offset + page.items.length;
+  _renderFilteredSamples();
+}
+
+async function _loadMoreSamples(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Loading…"; }
+  try {
+    await _fetchSamplePage(_samplesOffset, true);
+  } catch (e) {
+    showAlert("samples-alert", "error", `Could not load more: ${e.message}`);
   }
+}
+
+function _renderPeriodicTable() {
+  // Counts are graph-wide, from /api/samples/summary. Deriving them from the
+  // loaded rows would only ever count the current page.
+  const countMap = _sampleSummary.elements || {};
 
   const wrap = document.getElementById("ptable-wrap");
   const divs = [];
@@ -222,7 +252,8 @@ function toggleElemSelection(sym) {
   }
   _updatePTableHighlights();
   _updateSelectionChips();
-  _renderFilteredSamples();
+  _fetchSamplePage(0).catch(e =>
+    showAlert("samples-alert", "error", `Filter failed: ${e.message}`));
 }
 
 function _updatePTableHighlights() {
@@ -263,38 +294,27 @@ function clearElemSelection() {
   document.getElementById("elem-text-filter").value = "";
   _updatePTableHighlights();
   _updateSelectionChips();
-  _renderFilteredSamples();
+  _fetchSamplePage(0).catch(e =>
+    showAlert("samples-alert", "error", `Filter failed: ${e.message}`));
 }
 
+let _sampleFilterTimer = null;
+
+// Filters now cost a request, so coalesce keystrokes.
 function filterSamples() {
-  _renderFilteredSamples();
+  clearTimeout(_sampleFilterTimer);
+  _sampleFilterTimer = setTimeout(() => {
+    _fetchSamplePage(0).catch(e =>
+      showAlert("samples-alert", "error", `Filter failed: ${e.message}`));
+  }, 250);
 }
 
 function _renderFilteredSamples() {
-  const textQ = (document.getElementById("elem-text-filter")?.value || "").trim().toLowerCase();
+  // Rows are already filtered and paged by the server.
+  const filtered = _samplesCache;
 
-  let filtered = _samplesCache;
-
-  // Apply text filter first (by element symbol or sample name)
-  if (textQ) {
-    filtered = filtered.filter(s => {
-      if ((s.name || "").toLowerCase().includes(textQ)) return true;
-      if ((s.formula || "").toLowerCase().includes(textQ)) return true;
-      return (s.elements || []).some(el => el.toLowerCase().startsWith(textQ));
-    });
-  }
-
-  // Apply element selection filter: sample must contain ALL selected elements
-  if (_selectedElements.size > 0) {
-    filtered = filtered.filter(s => {
-      const elSet = new Set(s.elements || []);
-      return [..._selectedElements].every(el => elSet.has(el));
-    });
-  }
-
-  // Update count chip
   const el = document.getElementById("samples-result-count");
-  if (el) el.textContent = `${filtered.length} / ${_samplesCache.length} samples`;
+  if (el) el.textContent = `${_samplesTotal.toLocaleString()} / ${(_sampleSummary.total || 0).toLocaleString()} samples`;
 
   const wrap = document.getElementById("samples-table-wrap");
   if (!wrap) return;
@@ -320,10 +340,17 @@ function _renderFilteredSamples() {
       `</tr>`;
   }).join("");
 
+  const remaining = _samplesTotal - filtered.length;
+  const moreHtml = remaining > 0
+    ? `<div style="padding:10px;text-align:center">
+         <button class="btn btn-sm btn-outline" onclick="_loadMoreSamples(this)">Show more (${remaining.toLocaleString()} remaining)</button>
+       </div>`
+    : "";
+
   wrap.innerHTML = `<table>
     <thead><tr><th>Formula</th><th>Name</th><th>ID</th><th style="width:48px"></th></tr></thead>
     <tbody>${tbody}</tbody>
-  </table>`;
+  </table>` + moreHtml;
 
   wrap.querySelectorAll("tr[data-sid]").forEach(tr => {
     tr.addEventListener("click", () => openSampleDetail(tr.dataset.sid, tr.dataset.sname));
@@ -840,6 +867,56 @@ function buildTableDOM(columns, rows) {
 // ═══════════════════════════════════════════════════════════
 let _workflowsLoaded = false;
 
+const WORKFLOW_PAGE_SIZE = 100;
+let _workflowsTotal  = 0;
+let _workflowsOffset = 0;
+
+// Extracted from the tab renderer so that "show more" can build rows for a
+// freshly fetched page without duplicating the markup.
+function _workflowRow(w) {
+  const idShort = escHtml(_shortId(w.id).slice(0, 8));
+  const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${idShort}…</span>`;
+  const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
+  const method = w.method ? escHtml(w.method) : '—';
+  const sw    = w.software
+    ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
+    : '—';
+  const pot = w.potential_uri
+    ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--accent-hover);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
+    : escHtml(w.potential || '—');
+  const samples = w.output_samples || w.samples || [];
+  const sLinks = samples.length
+    ? samples.map(sid => {
+        const short = _shortId(sid).slice(0, 8);
+        return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(sid)}','${escAttr(_shortId(sid))}')">🔬 ${escHtml(short)}</button>`;
+      }).join(" ")
+    : '—';
+  return `<tr><td>${id}</td><td>${badge}</td><td>${method}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
+}
+
+function _workflowMoreHtml() {
+  const remaining = _workflowsTotal - _workflowsOffset;
+  if (remaining <= 0) return "";
+  return `<div class="wf-load-more" style="padding:10px;text-align:center">
+    <button class="btn btn-sm btn-outline" onclick="_loadMoreWorkflows(this)">Show more (${remaining.toLocaleString()} remaining)</button>
+  </div>`;
+}
+
+async function _loadMoreWorkflows(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Loading…"; }
+  try {
+    const res = await apiFetch(`/api/workflows?limit=${WORKFLOW_PAGE_SIZE}&offset=${_workflowsOffset}`);
+    const wfs = res.workflows || [];
+    _workflowsOffset += wfs.length;
+    const wrap = document.getElementById("workflows-table-wrap");
+    wrap.querySelector("tbody").insertAdjacentHTML("beforeend", wfs.map(_workflowRow).join(""));
+    const more = wrap.querySelector(".wf-load-more");
+    if (more) more.outerHTML = _workflowMoreHtml();
+  } catch (e) {
+    showAlert("workflows-alert", "error", `Could not load more: ${e.message}`);
+  }
+}
+
 async function loadWorkflows() {
   if (_workflowsLoaded) return;
   _workflowsLoaded = true;
@@ -849,42 +926,24 @@ async function loadWorkflows() {
   clearAlert("workflows-alert");
 
   try {
-    const res = await apiFetch("/api/workflows");
+    const res = await apiFetch(`/api/workflows?limit=${WORKFLOW_PAGE_SIZE}&offset=0`);
     const wfs = res.workflows || [];
+    _workflowsTotal = res.total ?? wfs.length;
+    _workflowsOffset = wfs.length;
     hideEl("workflows-loading");
 
     const countEl = document.getElementById("hdr-workflow-count");
-    if (countEl) countEl.textContent = wfs.length;
+    if (countEl) countEl.textContent = _workflowsTotal;
 
     if (!wfs.length) { showEl("workflows-empty"); return; }
 
     const thead = `<thead><tr>
       <th>ID</th><th>Type</th><th>Method</th><th>Software / DOI</th><th>Potential</th><th>Output Samples</th>
     </tr></thead>`;
-    const tbody = wfs.map(w => {
-      const idShort = escHtml(_shortId(w.id).slice(0, 8));
-      const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${idShort}…</span>`;
-      const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
-      const method = w.method ? escHtml(w.method) : '—';
-      const sw    = w.software
-        ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
-        : '—';
-      const pot = w.potential_uri
-        ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--accent-hover);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
-        : escHtml(w.potential || '—');
-      // output_samples linked via PROV.wasGeneratedBy
-      const samples = w.output_samples || w.samples || [];
-      const sLinks = samples.length
-        ? samples.map(s => {
-            const short = _shortId(s).slice(0, 8);
-            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(_shortId(s))}')">🔬 ${escHtml(short)}</button>`;
-          }).join(" ")
-        : '—';
-      return `<tr><td>${id}</td><td>${badge}</td><td>${method}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
-    }).join("");
+    const tbody = wfs.map(_workflowRow).join("");
 
     const wrap = document.getElementById("workflows-table-wrap");
-    wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
+    wrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>` + _workflowMoreHtml();
     showEl("workflows-table-wrap");
   } catch (e) {
     _workflowsLoaded = false; // allow retry on next tab click
