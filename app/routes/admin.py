@@ -17,6 +17,10 @@ def reload(x_reload_token: str = Header(...)):
     if x_reload_token != RELOAD_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid token")
     kg = reload_kg()
+    # The properties route memoises the record list and its per-type aggregates;
+    # both are stale once the graph has been replaced.
+    from app.routes import properties
+    properties.invalidate()
     return {"status": "reloaded", "n_samples": len(kg.sample_ids)}
 
 

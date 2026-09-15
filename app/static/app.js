@@ -897,7 +897,6 @@ async function loadWorkflows() {
 // ═══════════════════════════════════════════════════════════
 // PROPERTIES
 // ═══════════════════════════════════════════════════════════
-let _propertiesCache = [];
 let _propertiesLoaded = false;
 
 async function loadProperties() {
@@ -909,16 +908,16 @@ async function loadProperties() {
   clearAlert("properties-alert");
 
   try {
-    const data = await apiFetch("/api/properties");
-    _propertiesCache = data;
+    // Aggregates only — a couple of kB. The individual records are fetched per
+    // type when a card is expanded; there are >100k of them.
+    const data = await apiFetch("/api/properties/summary");
     hideEl("properties-loading");
 
-    const scalarCount = data.filter(p => !p.value_is_array).length;
     const countEl = document.getElementById("hdr-prop-count");
-    if (countEl) countEl.textContent = scalarCount;
+    if (countEl) countEl.textContent = data.scalar_total ?? "";
 
-    if (!data.length) { showEl("properties-empty"); return; }
-    renderPropertyCards(data);
+    if (!data.types || !data.types.length) { showEl("properties-empty"); return; }
+    renderPropertyCards(data.types);
   } catch (e) {
     _propertiesLoaded = false;
     hideEl("properties-loading");
@@ -927,51 +926,25 @@ async function loadProperties() {
   }
 }
 
-function renderPropertyCards(data) {
-  // Group by property type
-  const groups = {};
-  for (const p of data) {
-    const t = p.type || "Unknown";
-    if (!groups[t]) groups[t] = [];
-    groups[t].push(p);
-  }
-
+function renderPropertyCards(types) {
   const container = document.getElementById("properties-cards");
   container.innerHTML = "";
 
-  // Sort groups by name
-  const sortedTypes = Object.keys(groups).sort();
-
-  for (const typeName of sortedTypes) {
-    const items = groups[typeName];
-    const scalarItems = items.filter(p => !p.value_is_array);
-    const arrayItems = items.filter(p => p.value_is_array);
-
-    // Friendly display name (split camelCase)
+  for (const t of types) {
+    const typeName    = t.type || "Unknown";
     const displayName = typeName.replace(/([a-z])([A-Z])/g, "$1 $2");
+    const unit        = t.unit || "";
 
-    // Unit from first item
-    const unit = items[0]?.unit || "";
-
-    // Summary stats for scalar values
     let statsHtml = "";
-    if (scalarItems.length) {
-      const vals = scalarItems.map(p => p.value).filter(v => v !== null && v !== undefined && typeof v === "number");
-      if (vals.length) {
-        const min = Math.min(...vals);
-        const max = Math.max(...vals);
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-        statsHtml = `<div style="display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text-muted)">
-          <span>min: <strong style="color:var(--text)">${min.toPrecision(4)}</strong></span>
-          <span>max: <strong style="color:var(--text)">${max.toPrecision(4)}</strong></span>
-          <span>mean: <strong style="color:var(--text)">${avg.toPrecision(4)}</strong></span>
-        </div>`;
-      }
+    if (t.mean !== null && t.mean !== undefined) {
+      statsHtml = `<div style="display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text-muted)">
+        <span>min: <strong style="color:var(--text)">${t.min.toPrecision(4)}</strong></span>
+        <span>max: <strong style="color:var(--text)">${t.max.toPrecision(4)}</strong></span>
+        <span>mean: <strong style="color:var(--text)">${t.mean.toPrecision(4)}</strong></span>
+      </div>`;
     }
 
-    const cardId = `prop-card-${typeName}`;
     const tableId = `prop-table-${typeName}`;
-
     const card = document.createElement("div");
     card.className = "card";
     card.style.cssText = "margin-bottom:12px;cursor:pointer;transition:box-shadow 0.2s";
@@ -980,7 +953,7 @@ function renderPropertyCards(data) {
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <h3 style="margin:0;font-size:16px;font-weight:600">${escHtml(displayName)}</h3>
-            <span style="font-size:13px;color:var(--text-muted)">${scalarItems.length} scalar${arrayItems.length ? `, ${arrayItems.length} array` : ""} record${items.length !== 1 ? "s" : ""}${unit ? ` · ${escHtml(unit)}` : ""}</span>
+            <span style="font-size:13px;color:var(--text-muted)">${t.scalar_count.toLocaleString()} scalar${t.array_count ? `, ${t.array_count.toLocaleString()} array` : ""} record${t.count !== 1 ? "s" : ""}${unit ? ` · ${escHtml(unit)}` : ""}</span>
           </div>
           <span class="prop-chevron" style="font-size:18px;color:var(--text-muted);transition:transform 0.2s">▶</span>
         </div>
@@ -994,32 +967,43 @@ function renderPropertyCards(data) {
   showEl("properties-cards");
 }
 
-function togglePropertyTable(tableId, headerEl) {
+const PROP_PAGE_SIZE = 100;
+
+async function togglePropertyTable(tableId, headerEl) {
   const tableDiv = document.getElementById(tableId);
-  const chevron = headerEl.querySelector(".prop-chevron");
-  const isOpen = tableDiv.style.display !== "none";
+  const chevron  = headerEl.querySelector(".prop-chevron");
+  const isOpen   = tableDiv.style.display !== "none";
 
   if (isOpen) {
     tableDiv.style.display = "none";
     if (chevron) chevron.style.transform = "rotate(0deg)";
-  } else {
-    // Build table on first open (lazy)
-    if (!tableDiv.innerHTML) {
-      const typeName = tableId.replace("prop-table-", "");
-      const items = _propertiesCache.filter(p => p.type === typeName);
-      buildPropertySubTable(tableDiv, items);
-    }
-    tableDiv.style.display = "block";
-    if (chevron) chevron.style.transform = "rotate(90deg)";
+    return;
+  }
+
+  tableDiv.style.display = "block";
+  if (chevron) chevron.style.transform = "rotate(90deg)";
+
+  // Records are fetched per type on first open, not held in the browser.
+  if (tableDiv.innerHTML) return;
+
+  const typeName = tableId.replace("prop-table-", "");
+  tableDiv.innerHTML = `<div style="padding:20px;text-align:center"><div class="spinner"></div></div>`;
+  try {
+    const page = await apiFetch(
+      `/api/properties?type=${encodeURIComponent(typeName)}&limit=${PROP_PAGE_SIZE}&offset=0`);
+    tableDiv.innerHTML = "";
+    buildPropertySubTable(tableDiv, page.items, page.total, typeName);
+  } catch (e) {
+    tableDiv.innerHTML =
+      `<div class="alert alert-error" style="margin:12px">Could not load records: ${escHtml(e.message)}</div>`;
   }
 }
 
-function buildPropertySubTable(container, items) {
-  const PAGE_SIZE = 50;
+function buildPropertySubTable(container, items, total, typeName) {
   let shown = 0;
+  let loading = false;
 
-  function renderBatch() {
-    const batch = items.slice(shown, shown + PAGE_SIZE);
+  function renderRows(batch) {
     const rows = batch.map(p => {
       const label = escHtml(p.label || p.type);
 
@@ -1043,46 +1027,54 @@ function buildPropertySubTable(container, items) {
 
       return `<tr><td>${label}</td><td style="text-align:right">${valCell}</td><td>${sLinks}</td></tr>`;
     }).join("");
+    return rows;
+  }
 
-    shown += batch.length;
-
-    if (shown === batch.length) {
-      // First batch — create table structure
+  function appendBatch(batch) {
+    const rows = renderRows(batch);
+    if (!shown) {
       container.innerHTML = `<table style="font-size:13px">
         <thead><tr><th>Label</th><th style="text-align:right">Value</th><th>Sample(s)</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>` + (shown < items.length ? `<div class="prop-load-more" style="padding:8px 16px;text-align:center">
-        <button class="btn btn-sm btn-outline" onclick="this.parentElement.previousElementSibling.querySelector('tbody').innerHTML += ''; loadMoreProperties(this)">
-          Show more (${items.length - shown} remaining)
-        </button>
-      </div>` : "");
+      </table><div class="prop-load-more" style="padding:8px 16px;text-align:center"></div>`;
     } else {
-      // Append to existing tbody
-      const tbody = container.querySelector("tbody");
-      tbody.insertAdjacentHTML("beforeend", rows);
+      container.querySelector("tbody").insertAdjacentHTML("beforeend", rows);
     }
+    shown += batch.length;
+    updateMore();
+  }
 
-    // Update or remove "load more" button
-    const loadMoreDiv = container.querySelector(".prop-load-more");
-    if (loadMoreDiv) {
-      if (shown >= items.length) {
-        loadMoreDiv.remove();
-      } else {
-        loadMoreDiv.querySelector("button").textContent = `Show more (${items.length - shown} remaining)`;
-      }
+  function updateMore() {
+    const more = container.querySelector(".prop-load-more");
+    if (!more) return;
+    const remaining = total - shown;
+    if (remaining <= 0) { more.remove(); return; }
+    more.innerHTML =
+      `<button class="btn btn-sm btn-outline">Show more (${remaining.toLocaleString()} remaining)</button>`;
+    more.querySelector("button").onclick = loadMore;
+  }
+
+  // Each click fetches the next page rather than revealing already-downloaded
+  // rows, so the browser only ever holds what has actually been looked at.
+  async function loadMore() {
+    if (loading) return;
+    loading = true;
+    const btn = container.querySelector(".prop-load-more button");
+    if (btn) { btn.disabled = true; btn.textContent = "Loading…"; }
+    try {
+      const page = await apiFetch(
+        `/api/properties?type=${encodeURIComponent(typeName)}&limit=${PROP_PAGE_SIZE}&offset=${shown}`);
+      appendBatch(page.items);
+    } catch (e) {
+      const more = container.querySelector(".prop-load-more");
+      if (more) more.innerHTML =
+        `<span style="color:var(--error);font-size:12px">Could not load more: ${escHtml(e.message)}</span>`;
+    } finally {
+      loading = false;
     }
   }
 
-  // Store renderBatch on the container for "load more"
-  container._renderBatch = renderBatch;
-  renderBatch();
-}
-
-function loadMoreProperties(btn) {
-  const container = btn.closest("[id^='prop-table-']");
-  if (container && container._renderBatch) {
-    container._renderBatch();
-  }
+  appendBatch(items);
 }
 
 // ═══════════════════════════════════════════════════════════
