@@ -18,6 +18,7 @@ from app.routes import (
     properties,
     datasets,
     resolve,
+    stats,
 )
 
 app = FastAPI(
@@ -49,6 +50,7 @@ app.include_router(upload.router)
 app.include_router(properties.router)
 app.include_router(datasets.router)
 app.include_router(resolve.router)  # dereferenceable instance IRIs at /id/*
+app.include_router(stats.router)
 
 # Crystal Toolkit structure viewer (Dash WSGI sub-app) — loaded lazily
 # so the app still starts if crystal-toolkit isn't installed yet.

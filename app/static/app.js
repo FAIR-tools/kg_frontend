@@ -12,6 +12,7 @@ document.querySelectorAll("#main-nav button").forEach(btn => {
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${tab}`).classList.add("active");
+    if (tab === "overview")   loadOverview();
     if (tab === "samples")    loadSamples();
     if (tab === "graph")      loadGraph();
     if (tab === "workflows")  loadWorkflows();
@@ -127,6 +128,170 @@ async function _loadSampleCount() {
     const el = document.getElementById("hdr-sample-count");
     if (el) el.textContent = data.total;
   } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// OVERVIEW  —  what is actually in this graph
+// ═══════════════════════════════════════════════════════════
+// Composed from four responses: /api/stats supplies the census that nothing
+// else computes (triples, classes, vocabularies, structure coverage), and the
+// three summary endpoints already serve the rest. Bars are plain CSS — the
+// charts here are all ranked horizontal bars, which needs no plotting library.
+let _overviewLoaded = false;
+
+const OV_TOP_N = 12;   // rows shown before "show all"
+
+function _ovBars(container, rows, opts = {}) {
+  // rows: [{label, value, title?, href?, note?}]
+  if (!rows.length) {
+    container.innerHTML = `<p class="ov-empty">Nothing to show.</p>`;
+    return;
+  }
+  const max = Math.max(...rows.map(r => r.value)) || 1;
+  const topN = opts.topN ?? OV_TOP_N;
+
+  const rowHtml = r => {
+    const pct = Math.max((r.value / max) * 100, 0.6);   // keep tiny bars visible
+    const label = r.href
+      ? `<a href="${escAttr(r.href)}" target="_blank" rel="noopener">${escHtml(r.label)}</a>`
+      : escHtml(r.label);
+    return `<div class="bar-row" title="${escAttr(r.title || r.label)}">
+        <div class="bar-label">${label}${r.note ? `<span class="bar-note">${escHtml(r.note)}</span>` : ""}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(2)}%"></div></div>
+        <div class="bar-value">${r.value.toLocaleString()}</div>
+      </div>`;
+  };
+
+  const head = rows.slice(0, topN).map(rowHtml).join("");
+  const rest = rows.slice(topN).map(rowHtml).join("");
+  container.innerHTML = head +
+    (rest
+      ? `<div class="ov-rest" hidden>${rest}</div>
+         <button class="btn btn-sm btn-outline ov-more">Show all ${rows.length}</button>`
+      : "");
+
+  const btn = container.querySelector(".ov-more");
+  if (btn) {
+    btn.onclick = () => {
+      const more = container.querySelector(".ov-rest");
+      const open = !more.hidden;
+      more.hidden = open;
+      btn.textContent = open ? `Show all ${rows.length}` : "Show fewer";
+    };
+  }
+}
+
+function _ovStatCards(cards) {
+  document.getElementById("ov-headline").innerHTML = cards.map(c =>
+    `<div class="stat-card"${c.title ? ` title="${escAttr(c.title)}"` : ""}>
+       <div class="stat-value">${c.value.toLocaleString()}</div>
+       <div class="stat-label">${escHtml(c.label)}</div>
+     </div>`).join("");
+}
+
+async function loadOverview() {
+  if (_overviewLoaded) return;
+  _overviewLoaded = true;
+  showEl("overview-loading");
+  hideEl("overview-body");
+  clearAlert("overview-alert");
+
+  try {
+    // The census is a handful of SPARQL aggregates and is the slow one; the
+    // other three are cached responses. Fetch them together.
+    const [stats, samples, props, datasets] = await Promise.all([
+      apiFetch("/api/stats"),
+      apiFetch("/api/samples/summary"),
+      apiFetch("/api/properties/summary"),
+      apiFetch("/api/datasets"),
+    ]);
+
+    const simulations = _workflowsTotal ||
+      (await apiFetch("/api/workflows?limit=1&offset=0")).total || 0;
+
+    _ovStatCards([
+      { label: "Triples",          value: stats.triples,         title: "Total statements in the graph" },
+      { label: "Samples",          value: samples.total,         title: "cmso:AtomicScaleSample instances" },
+      { label: "Simulations",      value: simulations,           title: "asmo:EnergyCalculation and asmo:Simulation instances" },
+      { label: "Property records", value: props.scalar_total ?? props.total ?? 0, title: "Scalar property values" },
+      { label: "Datasets",         value: (datasets || []).length, title: "Published source datasets" },
+      { label: "Elements",         value: Object.keys(samples.elements || {}).length, title: "Distinct chemical elements covered" },
+      { label: "Classes",          value: stats.class_count,     title: "Distinct instantiated ontology classes" },
+      { label: "Vocabularies",     value: stats.vocabulary_count, title: "Namespaces appearing in predicate position" },
+    ]);
+
+    // Class labels link to the ontology term itself, which dereferences.
+    document.getElementById("ov-classes-sub").textContent = `${stats.class_count} classes`;
+    _ovBars(document.getElementById("ov-classes"),
+      stats.classes.map(c => ({ label: c.label, value: c.count, href: c.uri, title: c.uri })));
+
+    document.getElementById("ov-vocab-sub").textContent =
+      `${stats.predicate_count} distinct predicates`;
+    _ovBars(document.getElementById("ov-vocab"),
+      stats.vocabularies.map(v => ({
+        label: v.prefix || v.uri,
+        value: v.triples,
+        href: v.uri,
+        note: `${v.predicates} predicate${v.predicates !== 1 ? "s" : ""}`,
+        title: v.name ? `${v.name} — ${v.uri}` : v.uri,
+      })), { topN: 20 });
+
+    const ds = (datasets || []).slice().sort((a, b) => (b.sample_count || 0) - (a.sample_count || 0));
+    document.getElementById("ov-datasets-sub").textContent = `${ds.length} datasets`;
+    _ovBars(document.getElementById("ov-datasets"),
+      ds.map(d => ({
+        label: d.title || d.uri,
+        value: d.sample_count || 0,
+        href: d.identifier || d.uri,
+        title: d.title ? `${d.title} — ${d.uri}` : d.uri,
+      })));
+
+    const pt = (props.types || []).slice().sort((a, b) => b.count - a.count);
+    document.getElementById("ov-props-sub").textContent = `${pt.length} types`;
+    _ovBars(document.getElementById("ov-props"),
+      pt.map(t => ({
+        label: t.type,
+        value: t.count,
+        note: t.unit || "",
+        title: t.unit ? `${t.type} (${t.unit})` : t.type,
+      })));
+
+    _ovStructures(stats.structures);
+
+    hideEl("overview-loading");
+    showEl("overview-body");
+  } catch (e) {
+    _overviewLoaded = false;   // allow a retry on the next tab click
+    hideEl("overview-loading");
+    const retryMsg = e.message.startsWith("HTTP 5")
+      ? " The app may still be starting — please try again in a moment." : "";
+    showAlert("overview-alert", "error", `Could not load the overview: ${e.message}.${retryMsg}`);
+  }
+}
+
+// Most published samples are property-only: the source datasets report measured
+// quantities without shipping the atomic configuration. Saying so here is more
+// useful than letting people find out from a 422 in the structure viewer.
+function _ovStructures(s) {
+  const el = document.getElementById("ov-structures");
+  if (!el || !s || !s.total) { if (el) el.innerHTML = ""; return; }
+  const pct = v => ((v / s.total) * 100).toFixed(1);
+  el.innerHTML = `
+    <div class="split-bar">
+      <div class="split-seg split-a" style="width:${pct(s.with_cell)}%"
+           title="${s.with_cell.toLocaleString()} samples with a simulation cell"></div>
+      <div class="split-seg split-b" style="width:${pct(s.without_cell)}%"
+           title="${s.without_cell.toLocaleString()} samples without a simulation cell"></div>
+    </div>
+    <div class="split-legend">
+      <span><i class="dot dot-a"></i>With an atomic structure —
+        <strong>${s.with_cell.toLocaleString()}</strong> (${pct(s.with_cell)}%)</span>
+      <span><i class="dot dot-b"></i>Property-only —
+        <strong>${s.without_cell.toLocaleString()}</strong> (${pct(s.without_cell)}%)</span>
+    </div>
+    <p class="ov-note">A sample is property-only when its source dataset published
+      measured quantities without the atomic configuration. Those samples are fully
+      queryable; only the structure viewer needs a simulation cell.</p>`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1407,5 +1572,6 @@ async function _openDeepLink() {
 
 // ── Init ──────────────────────────────────────────────────
 _loadSampleCount();
+loadOverview();  // the landing tab
 loadGraph();     // pre-load in background so Graph tab is instant
 _openDeepLink();

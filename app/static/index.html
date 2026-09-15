@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260915b" />
+  <link rel="stylesheet" href="style.css?v=20260915c" />
 </head>
 <body>
 
@@ -29,7 +29,8 @@
 </header>
 
 <nav id="main-nav">
-  <button class="active" data-tab="graph">Graph</button>
+  <button class="active" data-tab="overview">Overview</button>
+  <button data-tab="graph">Graph</button>
   <button data-tab="samples">Samples</button>
   <button data-tab="workflows">Workflows</button>
   <button data-tab="properties">Properties</button>
@@ -40,8 +41,47 @@
 
 <main>
 
+  <!-- ───────────── OVERVIEW TAB ───────────── -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="panel-header">
+      <h2>Overview</h2>
+      <p>What this knowledge graph contains: its size, the ontology classes that are
+         instantiated, the vocabularies its predicates come from, and how the samples
+         are distributed across the published datasets.</p>
+    </div>
+    <div id="overview-alert"></div>
+    <div id="overview-loading" class="empty"><div class="spinner"></div></div>
+    <div id="overview-body" style="display:none">
+      <div class="stat-grid" id="ov-headline"></div>
+      <div class="ov-cols">
+        <div class="card ov-panel">
+          <h3>Instances per class <span class="ov-sub" id="ov-classes-sub"></span></h3>
+          <div id="ov-classes"></div>
+        </div>
+        <div class="card ov-panel">
+          <h3>Predicates by vocabulary <span class="ov-sub" id="ov-vocab-sub"></span></h3>
+          <div id="ov-vocab"></div>
+        </div>
+      </div>
+      <div class="ov-cols">
+        <div class="card ov-panel">
+          <h3>Samples per dataset <span class="ov-sub" id="ov-datasets-sub"></span></h3>
+          <div id="ov-datasets"></div>
+        </div>
+        <div class="card ov-panel">
+          <h3>Property records per type <span class="ov-sub" id="ov-props-sub"></span></h3>
+          <div id="ov-props"></div>
+        </div>
+      </div>
+      <div class="card ov-panel">
+        <h3>Structure coverage</h3>
+        <div id="ov-structures"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ───────────── GRAPH TAB ───────────── -->
-  <div class="tab-panel active" id="tab-graph">
+  <div class="tab-panel" id="tab-graph">
     <div class="panel-header">
       <h2>Knowledge Graph</h2>
       <p>Force-directed visualisation of all samples and their relationships. Click a sample node to inspect its details.</p>
@@ -330,6 +370,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260915b"></script>
+<script src="app.js?v=20260915c"></script>
 </body>
 </html>
