@@ -53,6 +53,20 @@ def run_guided_query(req: GuidedQueryRequest):
             op_method = OPERATOR_MAP.get(d.operator)
             if op_method is None:
                 raise HTTPException(status_code=400, detail=f"Unknown operator: {d.operator}")
+            # tools4rdf only turns an operator into a FILTER for data properties.
+            # For anything else Term.__eq__ falls through to `self.name == val.name`
+            # and raises AttributeError on a plain string, surfacing as a 500.
+            # Reject it here with something the caller can act on.
+            if getattr(term, "node_type", None) != "data_property":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Cannot filter on {d.uri}: it is a "
+                        f"{getattr(term, 'node_type', 'non-data')} term, not a data property. "
+                        "Filters apply to properties that hold a literal value."
+                    ),
+                )
+
             # Cast value to number if possible
             val: str | float | int = d.value
             try:
