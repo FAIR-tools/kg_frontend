@@ -121,8 +121,11 @@ def _collect(uri):
 _CSS = """
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font)}
 .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
-a{color:var(--accent-hover);text-decoration:none}
-a:hover{text-decoration:underline}
+a{color:var(--link);text-decoration:none}
+a:hover{color:var(--link-hover);text-decoration:underline}
+.home{display:inline-block;font-size:13px;font-weight:600;color:var(--text-muted);
+  text-decoration:none;margin-bottom:16px}
+.home:hover{color:var(--link);text-decoration:none}
 .kind{display:inline-block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--text-muted);border:1px solid var(--border);border-radius:99px;padding:3px 10px}
 h1{font-size:23px;margin:12px 0 6px;word-break:break-word}
@@ -222,6 +225,7 @@ def _render_page(uri: str, scheme: str, outgoing, inbound, n_inbound: int) -> st
 <link rel="canonical" href="{e(uri, quote=True)}">
 <style>{_CSS}</style>
 </head><body><div class="wrap">
+  <div><a class="home" href="/">&larr; AtomRDF Knowledge Graph</a></div>
   <span class="kind">{e(kind)}</span>
   <h1>{e(heading)}</h1>
   <div class="iri">{e(uri)}</div>

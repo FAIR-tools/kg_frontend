@@ -514,9 +514,9 @@ function renderDetailGrid(obj, prefix = "") {
       cells += `<div class="detail-item detail-item-full"><div class="key">Dataset</div>` +
         `<div class="val">` +
         (v.title ? `<div><strong>${escHtml(v.title)}</strong></div>` : "") +
-        (v.data_link ? `<div><a href="${escAttr(v.data_link)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:12px">🗂 Data: ${escHtml(v.data_link)}</a></div>` : "") +
+        (v.data_link ? `<div><a href="${escAttr(v.data_link)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">🗂 Data: ${escHtml(v.data_link)}</a></div>` : "") +
         (v.publication_title ? `<div style="margin-top:4px">${escHtml(v.publication_title)}</div>` : "") +
-        (v.publication_doi ? `<div><a href="${escAttr(v.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:12px">📄 Publication: ${escHtml(v.publication_doi)}</a></div>` : "") +
+        (v.publication_doi ? `<div><a href="${escAttr(v.publication_doi)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">📄 Publication: ${escHtml(v.publication_doi)}</a></div>` : "") +
         (v.authors ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">${escHtml(v.authors)}</div>` : "") +
         `</div></div>`;
       continue;
@@ -990,10 +990,10 @@ function _workflowRow(w) {
   const sw = w.software
     ? (_entityParts(w.software)
         ? _idLink(w.software)
-        : `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`)
+        : `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--link);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`)
     : '—';
   const pot = w.potential_uri
-    ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--accent-hover);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
+    ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--link);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
     : escHtml(w.potential || '—');
   const samples = w.output_samples || w.samples || [];
   const sLinks = samples.length ? samples.map(_sampleCell).join(" ") : '—';
@@ -1270,11 +1270,11 @@ async function loadDatasets() {
         : `<a class="entity-link" href="${escAttr(ds.uri)}" target="_blank" rel="noopener" title="${escAttr(ds.uri)}">${escHtml(ds.uri.length > 60 ? ds.uri.slice(0, 58) + "…" : ds.uri)}</a>`;
 
       const dataLink = ds.identifier
-        ? `<a href="${escAttr(ds.identifier)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(ds.identifier.length > 50 ? ds.identifier.slice(0,48)+'…' : ds.identifier)}</a>`
+        ? `<a href="${escAttr(ds.identifier)}" target="_blank" rel="noopener" style="color:var(--link);font-size:11px">${escHtml(ds.identifier.length > 50 ? ds.identifier.slice(0,48)+'…' : ds.identifier)}</a>`
         : '—';
 
       const pub = ds.publication_doi
-        ? `<a href="${escAttr(ds.publication_doi)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px" title="${escAttr(ds.publication_title || '')}">${escHtml(ds.publication_doi)}</a>`
+        ? `<a href="${escAttr(ds.publication_doi)}" target="_blank" rel="noopener" style="color:var(--link);font-size:11px" title="${escAttr(ds.publication_title || '')}">${escHtml(ds.publication_doi)}</a>`
         : '—';
 
       const authorFmt = ds.authors && ds.authors.length
