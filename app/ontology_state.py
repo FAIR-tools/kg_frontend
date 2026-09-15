@@ -70,8 +70,26 @@ _PURL_HTTP = "http://purls.helmholtz-metadaten.de"
 
 
 def _normalise_purl_scheme(combo) -> int:
-    """Force purls.helmholtz-metadaten.de terms to http. Returns how many changed."""
+    """Force purls.helmholtz-metadaten.de to http. Returns how many changed.
+
+    Both halves matter. Rewriting only the term URIs is not enough: tools4rdf
+    emits `PREFIX asmo: <...>` from the namespace registry and then writes
+    `asmo:hasValue`, so a stale https prefix keeps expanding to the wrong IRI
+    even when the term itself was fixed.
+    """
     changed = 0
+
+    for holder in (combo, getattr(combo, "onto", None)):
+        if holder is None:
+            continue
+        for attr in ("namespaces", "extra_namespaces"):
+            registry = getattr(holder, attr, None)
+            if not isinstance(registry, dict):
+                continue
+            for prefix, uri in list(registry.items()):
+                if isinstance(uri, str) and uri.startswith(_PURL_HTTPS):
+                    registry[prefix] = _PURL_HTTP + uri[len(_PURL_HTTPS):]
+                    changed += 1
     for ns_key in dir(combo.terms):
         if ns_key.startswith("_"):
             continue
