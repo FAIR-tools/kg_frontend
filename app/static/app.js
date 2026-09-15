@@ -42,6 +42,85 @@ function _shortId(uri) {
 }
 const _SAMPLE_URI_PATTERN = /^(sample:|https?:\/\/[^/]+\/id\/sample\/)/;
 
+// ── Entity identifiers ─────────────────────────────────────
+// Every instance in the graph is minted as
+//   https://atomkg.pyscal.org/id/<scheme>/<local-id>
+// and that IRI is also its entity page. So an identifier is never shown as bare
+// text: it is rendered as "<scheme>/<local-id>" and linked to its own page,
+// which is what lets the graph be walked by hand from any table in the portal.
+// Kept in step with KNOWN_SCHEMES in app/routes/resolve.py.
+const ENTITY_SCHEMES = new Set([
+  "sample", "property", "simulation", "person", "publication",
+  "software", "method",
+  "addatom", "deleteatom", "substituteatom",
+  "addition", "subtraction", "multiplication", "division",
+]);
+
+// Split an identifier into {scheme, localId, href}, or null when it is not one
+// of ours (an ontology term, a DOI, a plain literal). Both the minted IRI and
+// the legacy "sample:<uuid>" short form are accepted.
+function _entityParts(uri) {
+  const s = String(uri ?? "").trim();
+  if (!s) return null;
+  let m = s.match(/\/id\/([A-Za-z]+)\/([^/?#]+?)\/?$/);
+  if (!m) m = s.match(/^([A-Za-z]+):([^\s/]+)$/);
+  if (!m) return null;
+  const scheme = m[1].toLowerCase();
+  if (!ENTITY_SCHEMES.has(scheme)) return null;
+  let localId;
+  try { localId = decodeURIComponent(m[2]); } catch (_) { localId = m[2]; }
+  // Relative, so the link works on every hostname; the aliases 301 /id/* to the
+  // canonical host at the nginx layer.
+  return { scheme, localId, href: `/id/${scheme}/${encodeURIComponent(localId)}` };
+}
+
+// "<scheme>/<local-id>", with the local part clipped to `max` characters for
+// dense cells. The full IRI always stays available as the link's title.
+function _idLabel(parts, max) {
+  const local = (max && parts.localId.length > max + 1)
+    ? parts.localId.slice(0, max) + "…"
+    : parts.localId;
+  return `${parts.scheme}/${local}`;
+}
+
+// HTML for a linked identifier. Falls back to escaped text for anything that is
+// not one of our IRIs, so it is safe to pass any cell value.
+//   max          clip the local id to this many characters
+//   label        show this text instead of "<scheme>/<local-id>"
+//   stopRowClick emit a handler so clicking the link does not also fire the
+//                surrounding row's click (sample rows open a detail panel)
+function _idLink(uri, opts = {}) {
+  const parts = _entityParts(uri);
+  if (!parts) return escHtml(String(uri ?? ""));
+  const stop = opts.stopRowClick ? ' onclick="event.stopPropagation()"' : "";
+  const text = opts.label || _idLabel(parts, opts.max);
+  return `<a class="entity-link" href="${escAttr(parts.href)}" target="_blank"` +
+         ` rel="noopener" title="${escAttr(String(uri))}"${stop}>` +
+         `${escHtml(text)}</a>`;
+}
+
+// A sample referenced from some other table: the linked identifier plus the
+// structure viewer, which is the one thing the entity page cannot offer.
+function _sampleCell(sid) {
+  return `<span class="entity-cell">${_idLink(sid, { max: 8, stopRowClick: true })}` +
+    `<button class="btn btn-sm btn-outline entity-cell-btn" title="View atomic structure"` +
+    ` onclick="event.stopPropagation();openStructureViewer('${escAttr(sid)}','${escAttr(_shortId(sid))}')">🔬</button></span>`;
+}
+
+// DOM form of _idLink, for the tables that are built as elements.
+function _idAnchor(uri, opts = {}) {
+  const parts = _entityParts(uri);
+  if (!parts) return null;
+  const a = document.createElement("a");
+  a.className = "entity-link";
+  a.href = parts.href;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.title = String(uri);
+  a.textContent = _idLabel(parts, opts.max);
+  return a;
+}
+
 async function _loadSampleCount() {
   try {
     const data = await apiFetch("/api/samples/summary");
@@ -327,15 +406,18 @@ function _renderFilteredSamples() {
   }
   hideEl("samples-empty");
 
-  const tbody = filtered.map((s, i) => {
-    const formula = escHtml(s.formula || s.name || "—");
-    const name    = escHtml(s.name || "—");
-    const shortId = escHtml(_shortId(s.id).slice(0, 8));
+  const tbody = filtered.map(s => {
+    const formula = escHtml(s.formula || "—");
+    // cmso:hasName repeats the identifier whenever a sample was never given a
+    // label, which is every dataset published so far — showing that would just
+    // duplicate the ID column, so only a real name is rendered.
+    const name = (s.name && !_entityParts(s.name)) ? escHtml(s.name) : "—";
+    const idCell = _idLink(s.id, { stopRowClick: true });
     const viewBtn = `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openStructureViewer('${escAttr(s.id)}','${escAttr(s.name||s.id)}')" title="View atomic structure">🔬</button>`;
     return `<tr style="cursor:pointer" data-sid="${escAttr(s.id)}" data-sname="${escAttr(s.name||'')}">` +
       `<td><span class="sample-formula">${formula}</span></td>` +
       `<td>${name}</td>` +
-      `<td><span title="${escAttr(s.id)}" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${shortId}…</span></td>` +
+      `<td>${idCell}</td>` +
       `<td style="width:48px">${viewBtn}</td>` +
       `</tr>`;
   }).join("");
@@ -359,13 +441,22 @@ function _renderFilteredSamples() {
   showEl("samples-table-wrap");
 }
 
+// A detail panel's heading is itself an identifier, so link it to the entity
+// page rather than printing the IRI as dead text.
+function _setDetailTitle(el, id, name) {
+  if (!el) return;
+  const parts = _entityParts(id);
+  const named = (name && !_entityParts(name)) ? `${escHtml(name)} ` : "";
+  el.innerHTML = parts ? named + _idLink(id) : escHtml(name || String(id));
+}
+
 async function openSampleDetail(sampleId, name) {
   clearAlert("samples-alert");
   const panel = document.getElementById("sample-detail");
   const grid  = document.getElementById("detail-grid");
   const title = document.getElementById("detail-title");
 
-  title.textContent = name || sampleId;
+  _setDetailTitle(title, sampleId, name);
   grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px"><div class="spinner"></div></div>`;
   panel.classList.add("open");
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -436,8 +527,16 @@ function renderDetailGrid(obj, prefix = "") {
       cells += renderDetailGrid(v, label);
     } else {
       if (Array.isArray(v) && v.length > 3) continue;
-      const display = Array.isArray(v) ? JSON.stringify(v) : String(v);
-      cells += `<div class="detail-item"><div class="key">${escHtml(label)}</div><div class="val">${escHtml(display)}</div></div>`;
+      // Values that are identifiers link to their own entity pages.
+      let display;
+      if (Array.isArray(v)) {
+        display = (v.length && v.every(x => _entityParts(x)))
+          ? v.map(x => _idLink(x)).join(", ")
+          : escHtml(JSON.stringify(v));
+      } else {
+        display = _entityParts(v) ? _idLink(v) : escHtml(String(v));
+      }
+      cells += `<div class="detail-item"><div class="key">${escHtml(label)}</div><div class="val">${display}</div></div>`;
     }
   }
   return cells;
@@ -650,7 +749,7 @@ async function openGraphSampleDetail(sampleId, name) {
   const grid  = document.getElementById("graph-detail-grid");
   const title = document.getElementById("graph-detail-title");
 
-  title.textContent = name || sampleId;
+  _setDetailTitle(title, sampleId, name);
   grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px"><div class="spinner"></div></div>';
   panel.classList.add("open");
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -840,7 +939,10 @@ function buildTableDOM(columns, rows) {
     columns.forEach(c => {
       const td = document.createElement("td");
       const val = String(row[c] ?? "");
-      td.textContent = val;
+      // Query results are where IRIs show up most; any binding that names an
+      // entity in the graph becomes a link to its page.
+      const link = _idAnchor(val);
+      if (link) td.appendChild(link); else td.textContent = val;
       td.title = val;
       tr.appendChild(td);
       if (sampleCols.has(c)) sampleUri = val;
@@ -874,23 +976,27 @@ let _workflowsOffset = 0;
 // Extracted from the tab renderer so that "show more" can build rows for a
 // freshly fetched page without duplicating the markup.
 function _workflowRow(w) {
-  const idShort = escHtml(_shortId(w.id).slice(0, 8));
-  const id    = `<span title="${escAttr(w.id)}" style="font-family:var(--mono);font-size:11px">${idShort}…</span>`;
+  const id    = _idLink(w.id);
   const badge = `<span class="workflow-type-badge">${escHtml(w.type)}</span>`;
-  const method = w.method ? escHtml(w.method) : '—';
-  const sw    = w.software
-    ? `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`
+  // The method node is an entity of its own (asmo:MolecularStatics and friends
+  // are shared across tens of thousands of simulations), so link the label to it.
+  const method = w.method
+    ? (_entityParts(w.method_uri)
+        ? _idLink(w.method_uri, { label: w.method })
+        : escHtml(w.method))
+    : '—';
+  // Software is usually the project's own URL; when the graph holds it as an
+  // instance instead, it links to that entity page.
+  const sw = w.software
+    ? (_entityParts(w.software)
+        ? _idLink(w.software)
+        : `<a href="${escAttr(w.software)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(w.software.length > 50 ? w.software.slice(0,47)+'…' : w.software)}</a>`)
     : '—';
   const pot = w.potential_uri
     ? `<a href="${escAttr(w.potential_uri)}" target="_blank" rel="noopener" title="${escAttr(w.potential_uri)}" style="color:var(--accent-hover);font-size:11px">${escHtml(w.potential || w.potential_uri.split('/').pop())}</a>`
     : escHtml(w.potential || '—');
   const samples = w.output_samples || w.samples || [];
-  const sLinks = samples.length
-    ? samples.map(sid => {
-        const short = _shortId(sid).slice(0, 8);
-        return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(sid)}','${escAttr(_shortId(sid))}')">🔬 ${escHtml(short)}</button>`;
-      }).join(" ")
-    : '—';
+  const sLinks = samples.length ? samples.map(_sampleCell).join(" ") : '—';
   return `<tr><td>${id}</td><td>${badge}</td><td>${method}</td><td>${sw}</td><td>${pot}</td><td>${sLinks}</td></tr>`;
 }
 
@@ -1078,13 +1184,12 @@ function buildPropertySubTable(container, items, total, typeName) {
 
       const samples = p.sample_ids || [];
       const sLinks = samples.length
-        ? samples.slice(0, 2).map(s => {
-            const short = _shortId(s).slice(0, 8);
-            return `<button class="btn btn-sm btn-outline" style="margin:1px" onclick="openStructureViewer('${escAttr(s)}','${escAttr(_shortId(s))}')">🔬 ${escHtml(short)}</button>`;
-          }).join(" ") + (samples.length > 2 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 2}</span>` : "")
+        ? samples.slice(0, 2).map(_sampleCell).join(" ")
+          + (samples.length > 2 ? ` <span style="font-size:11px;color:var(--text-muted)">+${samples.length - 2}</span>` : "")
         : `—`;
 
-      return `<tr><td>${label}</td><td style="text-align:right">${valCell}</td><td>${sLinks}</td></tr>`;
+      return `<tr><td>${label}</td><td>${_idLink(p.id)}</td>` +
+        `<td style="text-align:right">${valCell}</td><td>${sLinks}</td></tr>`;
     }).join("");
     return rows;
   }
@@ -1093,7 +1198,7 @@ function buildPropertySubTable(container, items, total, typeName) {
     const rows = renderRows(batch);
     if (!shown) {
       container.innerHTML = `<table style="font-size:13px">
-        <thead><tr><th>Label</th><th style="text-align:right">Value</th><th>Sample(s)</th></tr></thead>
+        <thead><tr><th>Label</th><th>ID</th><th style="text-align:right">Value</th><th>Sample(s)</th></tr></thead>
         <tbody>${rows}</tbody>
       </table><div class="prop-load-more" style="padding:8px 16px;text-align:center"></div>`;
     } else {
@@ -1162,7 +1267,7 @@ async function loadDatasets() {
     const rows = data.map(ds => {
       const title = ds.title
         ? `<span title="${escAttr(ds.uri)}">${escHtml(ds.title)}</span>`
-        : `<span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${escHtml(ds.uri.slice(0, 60))}</span>`;
+        : `<a class="entity-link" href="${escAttr(ds.uri)}" target="_blank" rel="noopener" title="${escAttr(ds.uri)}">${escHtml(ds.uri.length > 60 ? ds.uri.slice(0, 58) + "…" : ds.uri)}</a>`;
 
       const dataLink = ds.identifier
         ? `<a href="${escAttr(ds.identifier)}" target="_blank" rel="noopener" style="color:var(--accent-hover);font-size:11px">${escHtml(ds.identifier.length > 50 ? ds.identifier.slice(0,48)+'…' : ds.identifier)}</a>`
@@ -1297,7 +1402,7 @@ async function _openDeepLink() {
   try { await loadSamples(); } catch (_) {}
 
   const cached = _samplesCache.find(s => s.id === sampleId);
-  openSampleDetail(sampleId, cached?.name || _shortId(sampleId));
+  openSampleDetail(sampleId, cached?.name || "");
 }
 
 // ── Init ──────────────────────────────────────────────────

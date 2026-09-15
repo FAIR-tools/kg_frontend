@@ -83,7 +83,9 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
     # (e.g. asmo:MolecularDynamics, asmo:MolecularStatics, asmo:DensityFunctionalTheory)
     method_node = g.value(wf_uri, _ASMO_METHOD)
     method = ""
+    method_uri = ""
     if method_node:
+        method_uri = str(method_node)
         method_type = g.value(method_node, RDF.type)
         method = _local(str(method_type)) if method_type else _local(str(method_node))
 
@@ -123,6 +125,7 @@ def _build_record(g, wf_uri: URIRef, type_name: str, type_uri: str) -> dict:
         "type": type_name,
         "type_uri": type_uri,
         "method": method,
+        "method_uri": method_uri,
         "software": software,
         "potential": potential,
         "potential_uri": potential_uri,

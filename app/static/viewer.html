@@ -176,7 +176,24 @@
   const params   = new URLSearchParams(window.location.search);
   const sampleId = params.get('id')   || '';
   const name     = params.get('name') || sampleId;
-  document.getElementById('sample-name').textContent = name || 'Structure Viewer';
+
+  // The heading is the sample's identifier, so show it as "sample/<local-id>"
+  // and link it back to the entity page the structure belongs to.
+  (function showTitle() {
+    const el = document.getElementById('sample-name');
+    const m  = String(sampleId).match(/\/id\/([A-Za-z]+)\/([^/?#]+?)\/?$/)
+            || String(sampleId).match(/^([A-Za-z]+):([^\s/]+)$/);
+    if (!m) { el.textContent = name || 'Structure Viewer'; return; }
+    const a = document.createElement('a');
+    a.href = `/id/${m[1].toLowerCase()}/${encodeURIComponent(m[2])}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = sampleId;
+    a.style.cssText = 'color:inherit;text-decoration:none;border-bottom:1px dotted currentColor';
+    a.textContent = `${m[1].toLowerCase()}/${m[2]}`;
+    el.textContent = '';
+    el.appendChild(a);
+  })();
 
   let _viewer  = null;
   let _lattice = null;

@@ -577,3 +577,34 @@ footer .sep { opacity: 0.3; }
   font-weight: 500;
   color: var(--text);
 }
+
+/* ── Entity identifiers ───────────────────────────────── */
+/* Identifiers are rendered as "<scheme>/<local-id>" and link to that entity's
+   own page at /id/<scheme>/<local-id>, so the graph can be walked from any
+   table. Monospace so the id reads as an identifier rather than as prose. */
+.entity-link {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--accent-hover);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 1px dotted transparent;
+}
+.entity-link:hover,
+.entity-link:focus-visible {
+  border-bottom-color: currentColor;
+}
+
+/* An identifier paired with an action button (the structure viewer). */
+.entity-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 1px 6px 1px 0;
+}
+.entity-cell-btn {
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 5px;
+}

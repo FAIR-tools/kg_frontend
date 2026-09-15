@@ -100,8 +100,9 @@ Edit `.env`:
   **Never hardcode it in a script** — an earlier value was committed to a public
   repo and had to be rotated.
 - `KG_DATA_DIR` — path to the `kg_data` checkout (e.g. `/home/opc/kg_data`)
-- `LLM_API_KEY` — Groq key for natural-language → SPARQL. Leaving it empty
-  disables only that feature; browsing, guided queries and `/sparql` work fine.
+- `LLM_API_KEY` — GWDG SAIA key for natural-language → SPARQL (`LLM_PROVIDER=saia`,
+  base `https://chat-ai.academiccloud.de/v1`). Leaving it empty disables only that
+  feature; browsing, guided queries and `/sparql` work fine.
 
 ## 6. Build and start
 
