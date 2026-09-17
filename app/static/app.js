@@ -1416,6 +1416,12 @@ function renderPropertyCards(types) {
     const tableId = `prop-table-${typeName}`;
     const card = document.createElement("div");
     card.className = "card";
+    // Searchable text lives on the element, so filtering can hide cards rather
+    // than rebuild them — an expanded card keeps the records it has fetched.
+    card.dataset.propSearch = [
+      typeName, displayName, unit,
+      ...(t.units_seen || []).map(u => u.unit),
+    ].filter(Boolean).join(" ").toLowerCase();
     card.style.cssText = "margin-bottom:12px;cursor:pointer;transition:box-shadow 0.2s";
     card.innerHTML = `
       <div style="padding:16px 20px" onclick="togglePropertyTable('${tableId}', this)">
@@ -1434,6 +1440,31 @@ function renderPropertyCards(types) {
   }
 
   showEl("properties-cards");
+  showEl("properties-filter-bar");
+  filterPropertyCards();
+}
+
+// 21 types today and growing with every dataset; the summary is already in the
+// browser, so this is a local filter with no request behind it.
+function filterPropertyCards() {
+  const input = document.getElementById("prop-type-filter");
+  const q = (input?.value || "").trim().toLowerCase();
+  const cards = document.querySelectorAll("#properties-cards .card");
+
+  let shown = 0;
+  cards.forEach(card => {
+    const hit = !q || (card.dataset.propSearch || "").includes(q);
+    card.style.display = hit ? "" : "none";
+    if (hit) shown++;
+  });
+
+  const count = document.getElementById("prop-filter-count");
+  if (count) {
+    count.textContent = q
+      ? `${shown} of ${cards.length} types`
+      : `${cards.length} types`;
+  }
+  if (shown) hideEl("properties-no-match"); else showEl("properties-no-match");
 }
 
 const PROP_PAGE_SIZE = 100;

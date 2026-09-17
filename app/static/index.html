@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260917b" />
+  <link rel="stylesheet" href="style.css?v=20260917c" />
 </head>
 <body>
 
@@ -174,7 +174,21 @@
     </div>
     <div id="properties-alert"></div>
     <div id="properties-loading" class="empty"><div class="spinner"></div></div>
+
+    <div class="card" id="properties-filter-bar" style="display:none;margin-bottom:10px;padding:10px 16px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="prop-type-filter"
+               placeholder="Search properties — name or unit…"
+               oninput="filterPropertyCards()" style="flex:1;min-width:220px" />
+        <span id="prop-filter-count" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+    </div>
+
     <div id="properties-cards" style="display:none"></div>
+    <div id="properties-no-match" class="empty" style="display:none">
+      <div class="icon">🔍</div>
+      <p>No property type matches that search.</p>
+    </div>
     <div id="properties-empty" class="empty" style="display:none">
       <div class="icon">📐</div>
       <p>No calculated properties found in the knowledge graph.</p>
@@ -380,6 +394,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260917b"></script>
+<script src="app.js?v=20260917c"></script>
 </body>
 </html>
