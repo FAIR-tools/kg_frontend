@@ -31,6 +31,7 @@ still loaded server-side (once, memoised) but never crosses the wire whole.
 from fastapi import APIRouter
 from app.graph_state import get_kg
 from app.cache import read_cache
+from app import units
 
 router = APIRouter(prefix="/api/properties", tags=["properties"])
 
@@ -160,7 +161,17 @@ def _load() -> list:
 
 
 def _build_summary(records: list) -> list:
-    """One row per property type: counts, unit, and min/max/mean of scalars."""
+    """
+    One row per property type: counts, unit, and min/max/mean of scalars.
+
+    A type can arrive in more than one unit -- GrainBoundaryEnergy is published
+    in both mJ/m² and J/m² -- so every value is converted to one canonical unit
+    before it is aggregated. Aggregating the raw numbers instead gave a
+    GrainBoundaryEnergy mean of 346 "mJ/m²" computed over values a factor of
+    1000 apart. `units_seen` reports what was actually in the data and
+    `converted` says whether any rescaling happened, so the normalisation is
+    visible rather than implied.
+    """
     acc: dict[str, dict] = {}
     for r in records:
         t = r.get("type") or "Unknown"
@@ -168,29 +179,58 @@ def _build_summary(records: list) -> list:
         if a is None:
             a = acc[t] = {
                 "type": t, "count": 0, "scalar_count": 0, "array_count": 0,
-                "unit": r.get("unit") or "", "unit_uri": r.get("unit_uri") or "",
-                "min": None, "max": None, "_sum": 0.0, "_n": 0,
+                "unit": "", "unit_uri": "",
+                "min": None, "max": None,
+                "_unit_counts": {}, "_unit_uris": {}, "_values": [],
             }
         a["count"] += 1
+
+        unit = units.local_name(r.get("unit") or r.get("unit_uri"))
+        if unit:
+            a["_unit_counts"][unit] = a["_unit_counts"].get(unit, 0) + 1
+            if r.get("unit_uri"):
+                a["_unit_uris"].setdefault(unit, r["unit_uri"])
+
         if r.get("value_is_array"):
             a["array_count"] += 1
             continue
         a["scalar_count"] += 1
         v = r.get("value")
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            a["min"] = v if a["min"] is None else min(a["min"], v)
-            a["max"] = v if a["max"] is None else max(a["max"], v)
-            a["_sum"] += v
-            a["_n"] += 1
-        if not a["unit"] and r.get("unit"):
-            a["unit"] = r["unit"]
-            a["unit_uri"] = r.get("unit_uri") or ""
+            a["_values"].append((v, unit))
 
     out = []
     for a in acc.values():
-        n = a.pop("_n")
-        total = a.pop("_sum")
+        unit_counts = a.pop("_unit_counts")
+        unit_uris = a.pop("_unit_uris")
+        values = a.pop("_values")
+
+        canonical = units.canonical_unit(unit_counts.items())
+        a["unit"] = canonical
+        a["unit_uri"] = unit_uris.get(canonical, "")
+        a["units_seen"] = [
+            {"unit": u, "count": n} for u, n in
+            sorted(unit_counts.items(), key=lambda kv: -kv[1])
+        ]
+
+        total, n, converted, unconvertible = 0.0, 0, False, 0
+        for v, unit in values:
+            if unit and canonical and unit != canonical:
+                cv = units.convert(v, unit, canonical)
+                if cv is None:
+                    # Same type, incompatible dimensions: leave it out of the
+                    # aggregate rather than average across a dimension boundary.
+                    unconvertible += 1
+                    continue
+                v, converted = cv, True
+            a["min"] = v if a["min"] is None else min(a["min"], v)
+            a["max"] = v if a["max"] is None else max(a["max"], v)
+            total += v
+            n += 1
+
         a["mean"] = (total / n) if n else None
+        a["converted"] = converted
+        a["excluded_from_stats"] = unconvertible
         out.append(a)
     return sorted(out, key=lambda a: a["type"])
 

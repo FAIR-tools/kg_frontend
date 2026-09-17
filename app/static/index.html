@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260915e" />
+  <link rel="stylesheet" href="style.css?v=20260917a" />
 </head>
 <body>
 
@@ -233,6 +233,26 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-title">Filter by calculated property</div>
+        <p class="ov-note" style="margin:0 0 12px">
+          Measured quantities are stored as their own nodes, carrying a value and a
+          QUDT unit. Where a property was published in more than one unit the values
+          are converted to the unit shown here before the comparison is applied —
+          the generated SPARQL below spells out the conversion.
+        </p>
+        <div id="prop-filter-rows"></div>
+        <button class="btn btn-outline btn-sm" id="add-prop-filter-btn"
+                onclick="addPropFilterRow()" style="margin-top:4px">
+          + Add property filter
+        </button>
+        <div style="margin-top:16px">
+          <button class="btn" id="prop-run-btn" onclick="runPropertyQuery()">
+            Run property query
+          </button>
+        </div>
+      </div>
+
       <div id="guided-alert"></div>
 
       <div id="guided-sparql-wrap" style="display:none">
@@ -360,6 +380,6 @@ WHERE {
 </footer>
 
 <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
-<script src="app.js?v=20260915e"></script>
+<script src="app.js?v=20260917a"></script>
 </body>
 </html>

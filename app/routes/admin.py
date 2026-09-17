@@ -19,8 +19,8 @@ def reload(x_reload_token: str = Header(...)):
     kg = reload_kg()
     # These routes memoise their record lists (and derived aggregates); all of
     # them are stale once the graph has been replaced.
-    from app.routes import properties, samples, workflows, stats
-    for mod in (properties, samples, workflows, stats):
+    from app.routes import properties, samples, workflows, stats, guided
+    for mod in (properties, samples, workflows, stats, guided):
         mod.invalidate()
     return {"status": "reloaded", "n_samples": len(kg.sample_ids)}
 

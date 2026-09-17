@@ -1044,6 +1044,130 @@ async function runGuidedQuery() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// FILTER BY CALCULATED PROPERTY
+// ═══════════════════════════════════════════════════════════
+// The ontology-path builder above cannot ask "which samples have a grain
+// boundary energy above X" — the value hangs off a property node two hops from
+// the sample, and tools4rdf will not walk there. /api/guided-query/properties
+// writes that pattern out directly, converting units where a property was
+// published in more than one.
+let _propTypes = null;
+let _propFilterCount = 0;
+
+async function _ensurePropTypes() {
+  if (_propTypes) return _propTypes;
+  _propTypes = await apiFetch("/api/guided-query/properties");
+  return _propTypes;
+}
+
+function _propTypeLabel(t) {
+  const units = (t.units_seen || []).map(u => u.unit).filter(Boolean);
+  const unit = t.unit ? ` — ${t.unit}` : "";
+  const mixed = units.length > 1 ? ` (converted from ${units.length} units)` : "";
+  return `${t.type}${unit}${mixed} · ${t.count.toLocaleString()}`;
+}
+
+async function addPropFilterRow() {
+  const container = document.getElementById("prop-filter-rows");
+  const id = ++_propFilterCount;
+  const row = document.createElement("div");
+  row.className = "filter-row";
+  row.id = `prop-filter-row-${id}`;
+  row.innerHTML = `
+    <div>
+      <label>Property</label>
+      <select id="prop-sel-${id}"><option value="">— loading… —</option></select>
+    </div>
+    <div>
+      <label>Operator</label>
+      <select id="prop-op-${id}">
+        <option value="">none</option>
+        <option value="==">=</option>
+        <option value="!=">≠</option>
+        <option value="&gt;">&gt;</option>
+        <option value="&gt;=">&ge;</option>
+        <option value="&lt;">&lt;</option>
+        <option value="&lt;=">&le;</option>
+      </select>
+    </div>
+    <div>
+      <label>Value</label>
+      <input type="text" id="prop-val-${id}" placeholder="number" />
+    </div>
+    <button class="remove-btn" onclick="removePropFilterRow(${id})" title="Remove">✕</button>
+  `;
+  container.appendChild(row);
+
+  const sel = document.getElementById(`prop-sel-${id}`);
+  try {
+    const types = await _ensurePropTypes();
+    sel.innerHTML = types.length
+      ? types.map(t => `<option value="${escAttr(t.type_uri)}">${escHtml(_propTypeLabel(t))}</option>`).join("")
+      : '<option value="">— none available —</option>';
+  } catch (e) {
+    sel.innerHTML = `<option value="">Error: ${escHtml(e.message)}</option>`;
+  }
+}
+
+function removePropFilterRow(id) {
+  const row = document.getElementById(`prop-filter-row-${id}`);
+  if (row) row.remove();
+}
+
+async function runPropertyQuery() {
+  clearAlert("guided-alert");
+  hideEl("guided-sparql-wrap");
+  hideEl("guided-results-wrap");
+
+  const filters = [];
+  document.querySelectorAll("[id^=prop-filter-row-]").forEach(row => {
+    const id = row.id.replace("prop-filter-row-", "");
+    const sel = document.getElementById(`prop-sel-${id}`);
+    if (!sel || !sel.value) return;
+    filters.push({
+      type_uri: sel.value,
+      operator: document.getElementById(`prop-op-${id}`)?.value || null,
+      value: document.getElementById(`prop-val-${id}`)?.value || null,
+    });
+  });
+
+  if (!filters.length) {
+    showAlert("guided-alert", "error", "Add at least one property filter.");
+    return;
+  }
+
+  setLoading("prop-run-btn", true);
+  try {
+    const res = await apiFetch("/api/guided-query/properties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filters, limit: 500 }),
+    });
+
+    if (res.sparql) {
+      document.getElementById("guided-sparql-text").textContent = res.sparql;
+      showEl("guided-sparql-wrap");
+    }
+
+    if (res.columns && res.columns.length && res.rows.length) {
+      const n = res.rows.length;
+      document.getElementById("guided-result-count").textContent =
+        `(${n} row${n !== 1 ? "s" : ""}${n === 500 ? ", capped" : ""})`;
+      const twrap = document.getElementById("guided-table-wrap");
+      twrap.innerHTML = "";
+      twrap.appendChild(buildTableDOM(res.columns, res.rows));
+      showEl("guided-results-wrap");
+    } else {
+      showAlert("guided-alert", "info", "No samples matched those filters.");
+    }
+  } catch (e) {
+    showAlert("guided-alert", "error", e.message);
+  } finally {
+    setLoading("prop-run-btn", false);
+  }
+}
+
 async function runSparql() {
   clearAlert("sparql-alert");
   hideEl("sparql-results-wrap");

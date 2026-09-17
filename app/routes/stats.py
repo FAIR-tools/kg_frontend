@@ -50,12 +50,36 @@ _Q_WITH_CELL = (
 )
 
 _stats: dict | None = None
+_present: dict | None = None
 
 
 def invalidate() -> None:
     """Drop the memoised census. Called after the KG is reloaded."""
-    global _stats
+    global _stats, _present
     _stats = None
+    _present = None
+
+
+def present_in_data() -> dict:
+    """
+    URIs that actually occur in the graph: {"classes": set, "predicates": set}.
+
+    The guided-query dropdowns are built from the ontology, which describes far
+    more than this collection instantiates — 215 classes and 117 properties
+    reachable from AtomicScaleSample, against 72 classes and 75 predicates in the
+    data. Selecting one of the absent terms produces a valid query that matches
+    nothing, which reads as the feature being broken. This is the set to filter
+    against. Filtering on the destination predicate is sound for multi-hop paths
+    too: a predicate that appears in no triple cannot be on a path that matches.
+    """
+    global _present
+    if _present is None:
+        g = get_kg().graph
+        _present = {
+            "classes": {str(row[0]) for row in g.query(_Q_CLASSES)},
+            "predicates": {str(row[0]) for row in g.query(_Q_PREDICATES)},
+        }
+    return _present
 
 
 def _local(uri: str) -> str:
