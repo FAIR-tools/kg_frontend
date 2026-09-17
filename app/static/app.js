@@ -1401,6 +1401,17 @@ function renderPropertyCards(types) {
         <span>mean: <strong style="color:var(--text)">${t.mean.toPrecision(4)}</strong></span>
       </div>`;
     }
+    // A type published in several units is aggregated in one of them; say which
+    // and where the rest came from, rather than presenting a silent conversion.
+    if (t.converted && (t.units_seen || []).length > 1) {
+      const from = t.units_seen
+        .filter(u => u.unit !== t.unit)
+        .map(u => `${u.count.toLocaleString()} in ${u.unit}`)
+        .join(", ");
+      statsHtml += `<div style="margin-top:6px;font-size:11.5px;color:var(--text-muted)">
+        Statistics in ${escHtml(t.unit)} — ${escHtml(from)} converted.
+      </div>`;
+    }
 
     const tableId = `prop-table-${typeName}`;
     const card = document.createElement("div");
